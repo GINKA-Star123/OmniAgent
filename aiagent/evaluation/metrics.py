@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 
+
 def mean(values: Iterable[float | None]) -> float | None:
     usable = [x for x in values if x is not None]
     return sum(usable) / len(usable) if usable else None

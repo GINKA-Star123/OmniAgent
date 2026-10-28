@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -49,6 +50,7 @@ SYSTEM_ENV_IGNORE = {
     "NO_PROXY", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
     "PYTHONPATH", "PYTHONIOENCODING", "PYTHONUNBUFFERED",
     "PATH", "HOME", "TZ", "LANG", "TMPDIR", "CUDA_VISIBLE_DEVICES",
+    "TMP", "TEMP", "NUITKA_CACHE_DIR",
 }
 
 ENV_LINE_PATTERN = re.compile(r"^\s*(?:export\s+)?([A-Z][A-Z0-9_]{2,})\s*=")
@@ -81,37 +83,33 @@ def collect_settings_env() -> dict[str, str]:
 def collect_scanned_env() -> dict[str, str]:
     """从源码里正则扫描直接读取的环境变量，作为兜底发现机制。"""
 
-    SCAN_IGNORED_PARTS = {".venv", ".git", ".github", "__pycache__", "node_modules", "_tmp", "tests"}
+    ignored_dirs = {
+        ".git", ".github", "__pycache__", "node_modules", "_tmp", "tests",
+        "venv", "site-packages", "build", "dist", "third_party",
+    }
+    patterns = {
+        ".py": GETENV_PATTERN,
+        ".ps1": POWERSHELL_ENV_PATTERN,
+        ".yml": COMPOSE_ENV_PATTERN,
+        ".yaml": COMPOSE_ENV_PATTERN,
+    }
     found: dict[str, str] = {}
-    for path in PROJECT_ROOT.rglob("*.py"):
-        if any(part in SCAN_IGNORED_PARTS for part in path.relative_to(PROJECT_ROOT).parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        for match in GETENV_PATTERN.finditer(text):
-            found.setdefault(match.group(1), path.relative_to(PROJECT_ROOT).as_posix())
-
-    for path in PROJECT_ROOT.rglob("*.ps1"):
-        if any(part in SCAN_IGNORED_PARTS for part in path.relative_to(PROJECT_ROOT).parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        for match in POWERSHELL_ENV_PATTERN.finditer(text):
-            found.setdefault(match.group(1), path.relative_to(PROJECT_ROOT).as_posix())
-
-    for pattern in ("*.yml", "*.yaml"):
-        for path in PROJECT_ROOT.rglob(pattern):
-            if any(part in SCAN_IGNORED_PARTS for part in path.relative_to(PROJECT_ROOT).parts):
+    for directory, dir_names, file_names in os.walk(PROJECT_ROOT):
+        # 原地裁剪遍历，避免进入 .venv-build 等依赖目录后才逐文件过滤。
+        dir_names[:] = sorted(
+            name for name in dir_names
+            if name not in ignored_dirs and not name.startswith(".venv")
+        )
+        for name in sorted(file_names):
+            path = Path(directory) / name
+            pattern = patterns.get(path.suffix.lower())
+            if pattern is None:
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            for match in COMPOSE_ENV_PATTERN.finditer(text):
+            for match in pattern.finditer(text):
                 found.setdefault(match.group(1), path.relative_to(PROJECT_ROOT).as_posix())
 
     return found

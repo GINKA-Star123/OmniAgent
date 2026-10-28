@@ -16,6 +16,7 @@ from aiagent.evaluation.http_support import require_isolated
 from aiagent.evaluation.metrics import quantile
 from aiagent.knowledge.evaluation.answer import evaluate_answer
 
+
 def load_summary(rows: list[dict], seconds: float, slo_ms: float) -> dict:
     if seconds <= 0 or not rows:
         raise ValueError("nonempty rows and positive observation window required")

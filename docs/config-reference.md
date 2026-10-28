@@ -13,6 +13,7 @@
 | `apps/worker/main.py` | worker 运行参数：`WORKER_CONCURRENCY`、`TASK_QUEUE_NAME` 等 |
 | `deploy/Dockerfile.api` | API worker 数：`WEB_CONCURRENCY` |
 | `deploy/docker-compose.tencent.yml` | 云端容器网络、Redis、Qdrant、Neo4j、Postgres |
+| `aiagent/evaluation/` | 评测进程直接读取的 API 目标、Judge、部署身份、语料指纹与资源采样配置 |
 | `apps/desktop_qt/chat_window.py` | Qt 调试端本地环境变量 |
 
 ## 示例文件
@@ -546,6 +547,27 @@ V1.1 新增两个只读检查：
 - 生产环境不要使用 `change-*`、`your-*` 占位符。
 - 生产环境确认 `CLOUD_MODE=true`、`RATE_LIMIT_ENABLED=true`、`INFLIGHT_LIMIT_ENABLED=true`。
 - 如果 `MEMORY_RESET_VECTOR_STORE=true`，启动时可能清空现有记忆，只能用于测试环境。
+
+## 评测进程配置
+
+以下配置供 `aiagent/evaluation/` 使用，本地与云端模板使用相同变量名和安全初始值；它们不是启用生产评测的默认授权。
+这些模块直接读取进程环境变量，不会因为配置项出现在 `.env` 中就自动全部导出。请按[统一评测流程](quality/project-evaluation-workflow.md)在独立评测终端显式设置并导出；不要把含密钥的整个配置文件盲目导出到所有进程。
+
+| 配置项 | 模板值 / 未设置行为 | 说明与使用条件 |
+| --- | --- | --- |
+| `EVAL_BASE_URL` | 留空 | 被测隔离 API 的 Origin，例如 `http://127.0.0.1:18080`；只允许 HTTP/HTTPS，不带用户名、密码、路径、查询参数或 fragment。禁止指向生产服务 |
+| `EVAL_ISOLATED` | `0` | 隔离评测显式确认开关；必须设为 `1` 才能通过 API/负载评测入口的隔离检查。开关本身不会创建隔离环境，仍需独立服务、数据与工作区 |
+| `EVAL_API_TOKEN` | 留空 | 评测 HTTP 客户端使用的 Bearer token；仅在被测隔离环境要求认证时填写，不等同于管理接口的 `CLOUD_ADMIN_TOKEN`，不得提交或记录明文 |
+| `EVAL_SUT_IDENTITY` | 留空；未设置时报告使用 `local-offline` | 被测部署身份，用于记录与比较报告。访问真实部署或 runtime graph 前必须显式填写实际隔离实例标识，不能用离线默认值代替 |
+| `EVAL_CORPUS_SHA256` | 留空；未设置时报告使用 `not_applicable` | 被测语料 manifest 的实际 SHA256，必须与本轮评测输入对应；真实 API RAG 评测要求显式填写，不能编造或复用不匹配语料的指纹 |
+| `EVAL_JUDGE_BASE_URL` | 留空 | OpenAI-compatible Judge 服务地址，按服务要求包含 `/v1` 等路径；未填写时由 SDK 解析默认端点，正式评测应显式指定并与被测服务区分 |
+| `EVAL_JUDGE_MODEL` | 留空 | Judge 模型的实际标识；使用 provider Judge 时必填，不能用 Mock 代替真实质量评定 |
+| `EVAL_JUDGE_API_KEY` | 留空 | Judge 服务凭据；使用 provider Judge 时必填，可能产生计费，不得提交或记录明文 |
+| `EVAL_JUDGE_VISION` | `0` | 只有 `1` 才允许向 Judge 发送图像；必须先确认所选模型实际支持图片，设置开关不能证明模型具备视觉能力，所选图片会发送到外部评审服务 |
+| `EVAL_TELEMETRY_REDIS_URL` | 留空 | `python -m aiagent.evaluation.telemetry --redis` 使用的 Redis 地址；不自动回退到 `REDIS_URL`，应指向本轮隔离评测 Redis，URL 中的凭据同样需要保密 |
+| `OPENROUTER_API_KEY` | 留空或从进程环境移除 | 当前 Memory 初始化用于检查 Mem0 的端点覆盖冲突，不是必须配置的新 Provider。使用显式 Memory OpenAI-compatible 地址时若此变量非空，会拒绝初始化；模板必须保持留空，且应检查终端是否继承了旧值 |
+
+真实 API 与 provider 评测仍需对应命令行显式授权，例如 `--allow-api`、`--allow-provider`；仅补齐环境变量不会自动发起请求或评测。完整执行步骤、费用与数据隔离要求以统一评测流程为准。
 
 ## 最终验证入口
 
