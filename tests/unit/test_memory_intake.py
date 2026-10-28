@@ -68,3 +68,17 @@ def test_memory_intake_skips_duplicate():
 
     assert plan.should_store is False
     assert plan.status == "duplicate"
+
+
+def test_memory_intake_allows_negative_preference_update():
+    fact = "用户已经不喜欢听索韵rila的歌曲了。"
+    plan = MemoryIntakeService().build_store_plan(
+        decision=MemoryWriteDecision(should_store=True, facts=[fact]),
+        memory_hits=[MemoryHit(id="old", memory="用户喜欢听索韵rila的歌曲。")],
+        existing_memory_context="1. 用户喜欢听索韵rila的歌曲。",
+        user_text="更新一下，我现在已经不喜欢听索韵rila的歌曲了。",
+        assistant_text="",
+    )
+    assert plan.should_store is True
+    assert plan.status == "ready"
+    assert plan.memory_text == fact

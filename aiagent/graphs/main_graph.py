@@ -562,6 +562,7 @@ class MainRunner:
                 persona_runtime=state["persona_runtime"],# type: ignore
                 internal_context=state.get("vision_context", ""),
                 retrieved_context=list(rag_result.context),
+                grounded_fact=rag_result.grounded_fact,
                 long_term_memory_context=state.get("memory_prompt_context", NO_LONG_TERM_MEMORY_TEXT),
                 user_id=event.user_id,
             )

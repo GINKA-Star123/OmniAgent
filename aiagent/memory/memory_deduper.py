@@ -28,7 +28,7 @@ class MemoryDeduper:
         best_similarity = 0.0
 
         for hit in hits:
-            similarity = self._similarity(candidate_norm,self._normalize(hit.memory))
+            similarity = self._similarity(candidate, hit.memory)
             if similarity> best_similarity:
                 best_hit = hit
                 best_similarity = similarity
@@ -43,7 +43,7 @@ class MemoryDeduper:
             )
 
         if existing_context:
-            context_similarity = self._context_similarity(candidate_norm,existing_context)
+            context_similarity = self._context_similarity(candidate, existing_context)
             if context_similarity >= self.duplicate_thresold:
                 return MemoryDedupResult(
                     duplicate = True,
@@ -67,6 +67,11 @@ class MemoryDeduper:
         return normalized
 
     def _similarity(self, left: str, right: str) -> float:
+        # A small polarity edit is not a duplicate, even with a long shared name.
+        if self._negation_markers(left) != self._negation_markers(right):
+            return 0.0
+        left = self._normalize(left)
+        right = self._normalize(right)
         if not left or not right:
             return 0.0
         if left == right:
@@ -77,11 +82,19 @@ class MemoryDeduper:
             return shorter / max(longer, 1)
         return SequenceMatcher(None, left, right).ratio()
 
-    def _context_similarity(self, candidate_norm: str, existing_context: str) -> float:
+    @staticmethod
+    def _negation_markers(text: str) -> tuple[str, ...]:
+        lowered = text.lower().replace("’", "'")
+        return tuple(sorted(re.findall(
+            r"[不没无未非]|\b(?:not|never|no|without|cannot)\b|\b[a-z]+n't\b",
+            lowered,
+        )))
+
+    def _context_similarity(self, candidate: str, existing_context: str) -> float:
         best = 0.0
         for line in existing_context.splitlines():
             line = line.strip()
             if not line:
                 continue
-            best = max(best, self._similarity(candidate_norm, self._normalize(line)))
+            best = max(best, self._similarity(candidate, line))
         return best

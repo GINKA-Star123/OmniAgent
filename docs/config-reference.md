@@ -549,13 +549,9 @@ V1.1 新增两个只读检查：
 
 ## 最终验证入口
 
-V1.0 最终 smoke 指令见：
+当前后端质量验证从[评测导航](quality/README.md)进入，按[统一流程](quality/project-evaluation-workflow.md)执行。
 
-- [v1-final-smoke.md](v1-final-smoke.md)
-
-V1.0 release checklist 见：
-
-- [v1-release-checklist.md](v1-release-checklist.md)
+旧版收尾资料仅供回顾：[V1.0 smoke](v1.0/v1-final-smoke.md)、[V1.0 发布清单](v1.0/v1-release-checklist.md)，不作为当前版本已验收的证据。
 
 ## V1.1 配置模板补充
 

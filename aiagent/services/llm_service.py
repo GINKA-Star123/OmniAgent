@@ -76,6 +76,13 @@ class LLMService:
         messages.append(HumanMessage(content=user_text))
         return messages
 
+    def close(self) -> None:
+        """Release the synchronous provider client owned by this service."""
+        model, self._chat_model = self._chat_model, None
+        client = getattr(model, "root_client", None)
+        if client is not None:
+            client.close()
+
     def invoke_messages(
         self,
         messages: Sequence[BaseMessage],

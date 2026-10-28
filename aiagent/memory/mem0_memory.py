@@ -18,6 +18,7 @@ from aiagent.memory.memory_layers import (
 )
 from aiagent.memory.memory_safety import MemorySafetyFilter
 from aiagent.schemas.memory import MemoryCategory, MemoryImportance, MemoryLayer, MemoryRecord, MemorySnapshot
+from config.env_secrets import resolve_named_secret
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class Mem0LongTermMemory:
         graph_password: str | None = None,
         graph_database: str = "neo4j",
         reset_vector_store: bool = False,
+        llm_base_url: str | None = None,
     ) -> None:
         self.enable_graph = enable_graph
         self.graph_provider = graph_provider
@@ -132,6 +134,14 @@ class Mem0LongTermMemory:
             },
             "reset_vector_store": reset_vector_store,
         }
+
+        # Mem0 must not infer the LLM endpoint from the embedding provider.
+        if llm_provider.strip().lower() == "openai" and llm_base_url:
+            if os.environ.get("OPENROUTER_API_KEY"):
+                raise RuntimeError(
+                    "Unset OPENROUTER_API_KEY before using an explicit Memory OpenAI endpoint."
+                )
+            config["llm"]["config"]["openai_base_url"] = llm_base_url.strip().rstrip("/")
 
         if enable_graph:
             if not graph_url or not graph_username or not graph_password:
@@ -522,7 +532,7 @@ class Mem0LongTermMemory:
         if not candidate:
             return None
 
-        env_value = os.getenv(candidate)
+        env_value = resolve_named_secret(candidate)
         if env_value:
             return env_value.strip()
 
@@ -630,6 +640,13 @@ class Mem0LongTermMemory:
 
         next_metadata = dict(record.metadata or {})
         next_metadata.update(metadata or {})
+        # Active records must not retain the superseded fact in extraction/query hints.
+        for key in (
+            "memory_hint", "vision_memory_hint", "memory_retrieval_query",
+            "memory_write_reason", "policy_reason",
+        ):
+            next_metadata.pop(key, None)
+        next_metadata["memory_hint"] = guard.redacted_text.strip()
 
         next_category = category or record.category
         next_importance = importance or record.importance

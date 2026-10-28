@@ -95,7 +95,7 @@ def test_manifest_flags_chunk_policy_change(tmp_path):
     assert "chunk_policy_changed" in report.reasons
 
 
-@pytest.mark.parametrize("legacy_version", ["bm25-zh-ngram-v2", "bm25-zh-ngram-v3"])
+@pytest.mark.parametrize("legacy_version", ["bm25-zh-ngram-v2", "bm25-zh-ngram-v3", "bm25-zh-ngram-v4"])
 def test_manifest_flags_legacy_filename_tokenization(tmp_path, legacy_version):
     knowledge = tmp_path / "knowledge"
     knowledge.mkdir()

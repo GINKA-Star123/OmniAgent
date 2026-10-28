@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import re
+
+from aiagent.knowledge.profile_fields import content_profile_fields, matched_profile_sources, query_profile_fields
+from aiagent.knowledge.query_normalizer import matches_profile_subject
 from aiagent.knowledge.retriever import RetrievedChunk
 
 
@@ -11,10 +15,19 @@ class SimpleReranker:
         top_k: int = 4,
     ) -> list[RetrievedChunk]:
         query_lower = query.lower()
+        fields = query_profile_fields(query)
+        profile_sources = matched_profile_sources(query, (chunk.source_path for chunk in chunks)) if fields else set()
         reranked: list[RetrievedChunk] = []
 
         for chunk in chunks:
             score = chunk.score
+            if chunk.source_path in profile_sources:
+                # Named source and the requested explicit field outrank generic profile-word overlap.
+                score += 0.20
+                matched_fields = fields.intersection(content_profile_fields(chunk.content))
+                score += 0.25 * len(matched_fields) / len(fields)
+            if self._has_explicit_alias_match(query_lower, chunk.content):
+                score += 0.08
 
             if "bm25" in chunk.retrieval_sources and "vector" in chunk.retrieval_sources:
                 score += 0.08
@@ -55,6 +68,31 @@ class SimpleReranker:
 
         reranked.sort(key=lambda item: item.score, reverse=True)
         return reranked[:top_k]
+
+    @staticmethod
+    def _has_profile_subject_match(query_lower: str, chunk: RetrievedChunk) -> bool:
+        return matches_profile_subject(query_lower, chunk.source_path)
+
+    @staticmethod
+    def _has_explicit_alias_match(query_lower: str, content: str) -> bool:
+        # Only declared aliases count, not incidental names in narrative text.
+        declarations = re.findall(
+            r"^\s*(?:[-*]\s+)?(?:\*\*)?(?:别称|别名|又称|英文名|aliases?)"
+            r"(?:\*\*)?\s*[:：]\s*([^\n]+)",
+            content, flags=re.MULTILINE | re.IGNORECASE,
+        )
+        for declaration in declarations:
+            declaration = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", declaration)
+            declaration = re.sub(r"\[\^[^\]]*\]", "", declaration).replace("*", "")
+            for alias in re.split(r"[、,，;；/|（）()。\s]+", declaration.lower()):
+                if len(alias) < 2:
+                    continue
+                pattern = re.escape(alias)
+                if alias.isascii():
+                    pattern = rf"(?<![a-z0-9_./:-]){pattern}(?![a-z0-9_./:-])"
+                if re.search(pattern, query_lower):
+                    return True
+        return False
 
     def _has_exact_term_overlap(self, query_lower: str, chunk: RetrievedChunk) -> bool:
         important_terms = [

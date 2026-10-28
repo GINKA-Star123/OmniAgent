@@ -9,6 +9,8 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
+from aiagent.knowledge.profile_fields import content_profile_fields, matched_profile_sources, query_profile_fields
+from aiagent.knowledge.query_normalizer import normalize_rag_query
 from aiagent.knowledge.vector_store import LangChainVectorStore
 
 RAW_CONTENT_KEY = "_bm25_raw_content"
@@ -40,8 +42,15 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.bm25_retriever: BM25Retriever | None = None
         self.documents: list[Document] = []
+        self._profile_documents: dict[str, list[tuple[Document, frozenset[str]]]] = {}
     def build(self, documents: list[Document]) -> None:
         self.documents = documents
+        self._profile_documents = {}
+        for doc in documents:
+            source = str(doc.metadata.get("source_path", ""))
+            fields = content_profile_fields(doc.page_content)
+            if source and fields:
+                self._profile_documents.setdefault(source, []).append((doc, fields))
 
         bm25_texts = [self._searchable_text(doc) for doc in documents]
         bm25_metadatas = [
@@ -116,22 +125,52 @@ class HybridRetriever:
         if not query:
             return []
         candidates: list[_Candidate] = []
-        query_terms = set(self._tokenize(query))
         if self.bm25_retriever is not None:
-            for rank, doc in enumerate(self.bm25_retriever.invoke(query), start=1):
-                restored = self._restore_document(doc)
-                document_terms = set(self._tokenize(self._searchable_text(restored)))
-                if not query_terms.intersection(document_terms):
-                    continue
-                candidates.append(_Candidate(doc=restored, source="bm25", rank=rank))
-        for rank, (doc, cosine_score) in enumerate(
-            vector_store.similarity_search_with_score(query, k=self.vector_top_k),
-            start=1,
-        ):
-            candidates.append(
-                _Candidate(doc=doc, source="vector", rank=rank, cosine_score=cosine_score)
-            )
-        return self._fuse(candidates, top_k=top_k)
+            # Keep raw-query candidates; query expansion is another lexical view, not another RRF vote.
+            lexical: dict[str, _Candidate] = {}
+            for lexical_query in dict.fromkeys((query, normalize_rag_query(query))):
+                query_terms = set(self._tokenize(lexical_query))
+                for rank, doc in enumerate(self.bm25_retriever.invoke(lexical_query), start=1):
+                    restored = self._restore_document(doc)
+                    document_terms = set(self._tokenize(self._searchable_text(restored)))
+                    if not query_terms.intersection(document_terms):
+                        continue
+                    key = self._chunk_id(restored)
+                    previous = lexical.get(key)
+                    if previous is None or rank < previous.rank:
+                        lexical[key] = _Candidate(doc=restored, source="bm25", rank=rank)
+            candidates.extend(lexical.values())
+        # A single vector request uses the actual question, never the appended domain terms.
+        if self.vector_top_k > 0:
+            for rank, (doc, cosine_score) in enumerate(
+                vector_store.similarity_search_with_score(query, k=self.vector_top_k),
+                start=1,
+            ):
+                candidates.append(
+                    _Candidate(doc=doc, source="vector", rank=rank, cosine_score=cosine_score)
+                )
+        chunks = self._fuse(candidates, top_k=top_k)
+        fields = query_profile_fields(query)
+        if fields:
+            # Exact subject + an explicit field is a local lookup, not a fabricated BM25/vector rank.
+            by_id = {chunk.chunk_id: chunk for chunk in chunks}
+            profiles = []
+            for source in sorted(matched_profile_sources(query, self._profile_documents)):
+                for doc, available_fields in self._profile_documents[source]:
+                    if not fields.intersection(available_fields):
+                        continue
+                    key = self._chunk_id(doc)
+                    chunk = by_id.get(key)
+                    if chunk is None:
+                        chunk = self._fuse([_Candidate(doc=doc, source="profile_field", rank=1)], top_k=1)[0]
+                    else:
+                        chunk = chunk.model_copy(update={
+                            "retrieval_sources": sorted(set(chunk.retrieval_sources) | {"profile_field"}),
+                        })
+                    profiles.append(chunk)
+            profile_ids = {chunk.chunk_id for chunk in profiles}
+            chunks = [*profiles, *(chunk for chunk in chunks if chunk.chunk_id not in profile_ids)][:top_k]
+        return chunks
 
     def _fuse(self, candidates: list[_Candidate], top_k: int) -> list[RetrievedChunk]:
         scores: dict[str, float] = defaultdict(float)
@@ -190,7 +229,7 @@ class HybridRetriever:
     def _tokenize(self, text: str) -> list[str]:
         lowered = text.lower()
         english_terms = re.findall(r"[a-z0-9_./:-]{2,}", lowered)
-        chinese_blocks = re.findall(r"[\u4e00-\u9fff]+", lowered)
+        chinese_blocks = re.findall(r"[\u4e00-\u9fff\u3040-\u30ff\u0370-\u03ff]+", lowered)
 
         chinese_terms: list[str] = []
 
@@ -200,9 +239,9 @@ class HybridRetriever:
                 continue
 
             chinese_terms.append(block)
-
-
-            if len(block) >= 5:
+            # Short names and fields must overlap with the same words in a full query.
+            chinese_terms.extend(block[i : i + 2] for i in range(len(block) - 1))
+            if len(block) >= 3:
                 chinese_terms.extend(block[i : i + 3] for i in range(len(block) - 2))
 
         seen: set[str] = set()

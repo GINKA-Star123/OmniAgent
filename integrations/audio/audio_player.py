@@ -21,8 +21,6 @@ class AudioPlayer:
         self._current_audio_path: str = ""
         self._current_playlist: list[str] = []
 
-        self._ensure_mixer()
-
     def _ensure_mixer(self) -> None:
         if self._mixer_ready:
             return

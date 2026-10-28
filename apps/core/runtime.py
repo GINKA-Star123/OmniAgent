@@ -255,18 +255,16 @@ class CoreRuntime:
         return freshness_fn(force_refresh=refresh) # type: ignore
 
     def search_knowledge(self, query: str, top_k: int = 4) -> list[dict]:
-        normalized_query = normalize_rag_query(query)
-        return self.rag_pipeline.debug_retrieve(query=normalized_query, top_k=top_k)
+        return self.rag_pipeline.debug_retrieve(query=query, top_k=top_k)
 
     def get_knowledge_prompt_context(self, query: str, top_k: int = 4) -> str:
-        normalized_query = normalize_rag_query(query)
-        return self.rag_pipeline.format_for_prompt(query=normalized_query, top_k=top_k)
+        return self.rag_pipeline.format_for_prompt(query=query, top_k=top_k)
 
     def inspect_knowledge(self,query:str,top_k: int =4) -> dict:
         normalized_query = normalize_rag_query(query)
 
         if hasattr(self.rag_pipeline,"inspect"):
-            return self.rag_pipeline.inspect(query=normalized_query, top_k=top_k)
+            return self.rag_pipeline.inspect(query=query, top_k=top_k)
 
         chunks = self.rag_pipeline.debug_retrieve(
         query=normalized_query,

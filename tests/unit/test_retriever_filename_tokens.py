@@ -75,3 +75,32 @@ def test_explicit_metadata_alias_is_still_searchable():
     chunks = retriever.retrieve("starlight", vector_store)
 
     assert [chunk.chunk_id for chunk in chunks] == ["alternate"]
+
+
+@pytest.mark.parametrize(("text", "terms"), [
+    ("牙音属于哪个团体", {"牙音", "属于", "团体", "牙音属"}),
+    ("小冰生日", {"小冰", "生日", "小冰生"}),
+    ("言懿", {"言懿"}),
+    ("我在看π姐的资料", {"π姐"}),
+    ("ランちゃん的资料", {"ラン", "ランち", "ちゃん"}),
+    ("梦の蝶属于哪个团体", {"梦の蝶", "梦の", "の蝶"}),
+])
+def test_chinese_short_names_survive_query_tokenization(text, terms):
+    tokens = HybridRetriever()._tokenize(text)
+    assert terms <= set(tokens)
+    assert len(tokens) == len(set(tokens))
+
+
+def test_two_character_name_retrieves_its_document():
+    docs = [
+        Document(page_content="牙音属于V家。", metadata={"chunk_id": "target"}),
+        Document(page_content="其他歌手属于不同团体。", metadata={"chunk_id": "other"}),
+    ]
+    retriever = HybridRetriever(vector_top_k=0)
+    retriever.build(docs)
+    vector_store = Mock()
+    vector_store.similarity_search_with_score.return_value = []
+
+    chunks = retriever.retrieve("牙音属于哪个团体？", vector_store)
+
+    assert "target" in [chunk.chunk_id for chunk in chunks]

@@ -1,0 +1,55 @@
+{
+  "version": "project-visual-coarse-v1",
+  "review_method": "agent_contact_sheet_visual_review_2026-10-26",
+  "limitations": "只检查可见粗粒度事实；不是用户人工确认，不提供角色身份、完整OCR或作品出处真值。正式验收前需复核原图。",
+  "images": {
+    "luotianyi/images/LUO12.png": {
+      "source_sha256": "bc255bfc654bbce1866e793e2b5dffd5f94687acd0cf60f5f1b3390f813840e2",
+      "gold": {"instrument": "画面中有角色抱着或演奏琵琶。", "appearance": "角色有浅灰色长发。"}
+    },
+    "luotianyi/images/LUO15.png": {
+      "source_sha256": "4a62938c3e5cd76b7c9517606e05ca48c6f455a13380d539672283a278c613e0",
+      "gold": {"figure": "画面中心是一个大头Q版角色。", "background": "背景以黄色为主，周围有表情图案。"}
+    },
+    "luotianyi/images/LUO33.png": {
+      "source_sha256": "fc2e2dac752bca3b534455c9ec75ec26af07d3a13e8a437243fdc20241c10475",
+      "gold": {"background": "画面是蓝色背景，有雪花图案。", "appearance": "画中角色是灰色头发。"}
+    },
+    "luotianyi/images/LUO41.jpg": {
+      "source_sha256": "e05374b078762bc5a07d11a94a7793b84b49027c4e38cf809f63547d0607870d",
+      "gold": {"object": "画面中有汽车。", "scene": "画面整体较暗，有角色与车辆同框。"}
+    },
+    "yanhe/images/YAN12.jpg": {
+      "source_sha256": "1f725f685273fdf9090e6fdc2cb916e22bf3948dc73beb20f13beff1de08f914",
+      "gold": {"action": "Q版角色坐在长椅上。", "background": "旁边有路灯，背景有雪花图案。"}
+    },
+    "yanhe/images/YAN2.jpg": {
+      "source_sha256": "4b8819e053933b039e96cade569082fde50a887ea709a6c7d5ff6b01c8374e0c",
+      "gold": {"appearance": "角色是白色短发、蓝色眼睛。", "clothing": "Q版角色穿着红色为主的服装。"}
+    },
+    "yanhe/images/YAN4.jpg": {
+      "source_sha256": "17bfa0b882d70a13c7a79dd856b9231de002e11c3f20dc34939c6d7a00eb1dee",
+      "gold": {"object": "角色戴着较大的耳机。", "appearance": "角色有浅色短发，画面以人物近景为主。"}
+    },
+    "yanhe/images/YAN5.png": {
+      "source_sha256": "a78dc67189326d24e969a6d244ba578b9e7a81da54866d713f75587dd18bca42",
+      "gold": {"figure": "画面是Q版浅色头发角色。", "background": "角色周围有花朵及彩色装饰。"}
+    },
+    "yuezhengling/images/YUE1.jpg": {
+      "source_sha256": "63012402160612a228928e1237085b02cf4f0cabc2a5270c8c55c408d241be5e",
+      "gold": {"scene": "角色位于有许多树木的绿色树林中。", "action": "角色双臂向上举起。", "clothing": "角色穿红白配色的服装。"}
+    },
+    "yuezhengling/images/YUE24.jpg": {
+      "source_sha256": "898e53820b5b4f76a2551662e4d580006575905ad731cb9752c68eaac01f0e3a",
+      "gold": {"object": "Q版角色身后有一只很大的玩具熊。", "palette": "画面整体以粉色为主。"}
+    },
+    "yuezhengling/images/YUE3.png": {
+      "source_sha256": "d0c2c80615fd20a7ff766072de63f13f38235ea2a8f026c9d0a8b1fed4aa32b4",
+      "gold": {"scene": "画面里有门和室内走廊。", "action": "红白服装的角色站在门口举起手臂。"}
+    },
+    "yuezhengling/images/YUE34.jpg": {
+      "source_sha256": "3bb622812169b19e5d028b6fbb4d06475b779531e40406555c3910595433883c",
+      "gold": {"layout": "画面是角色设定图，有多个角度的人物展示。", "clothing": "角色服装以红、白、黑为主。"}
+    }
+  }
+}

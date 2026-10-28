@@ -66,6 +66,7 @@ from aiagent.vision.image_store import ImageStore
 from apps.core.capabilities import CapabilityRegistry
 from apps.core.runtime import CoreRuntime
 from cloud.config import cloud_settings
+from config.env_secrets import resolve_named_secret
 from config.settings import settings
 from integrations.asr.api_asr_client import ApiASRClient
 from integrations.asr.faster_whisper_client import FasterWhisperClient
@@ -88,13 +89,11 @@ def _resolve_env_secret(value: str | None) -> str | None:
     if value is None:
         return None
 
-    import os
-
     candidate = value.strip()
     if not candidate:
         return None
 
-    env_value = os.getenv(candidate)
+    env_value = resolve_named_secret(candidate)
     if env_value:
         return env_value.strip()
 
@@ -386,6 +385,11 @@ def build_runtime() -> CoreRuntime:
             llm_provider=settings.memory_llm_provider,
             llm_model=settings.memory_llm_model,
             llm_api_key_env=settings.memory_llm_api_key_env,
+            llm_base_url=(
+                settings.openai_base_url
+                if settings.memory_llm_provider.strip().lower() == "openai"
+                else None
+            ),
             embedder_provider=settings.memory_embedder_provider,
             embedder_model=settings.memory_embedder_model,
             embedder_api_key_env=settings.memory_embedder_api_key_env,

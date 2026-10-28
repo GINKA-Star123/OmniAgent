@@ -1,0 +1,113 @@
+{
+  "version": "project-eval-adjudication-v1",
+  "review_date": "2026-10-28",
+  "reviewer": "codex_direct_image_and_source_review",
+  "status": "agent_reviewed_candidate_not_human_accepted",
+  "baseline_eligible": false,
+  "scope": "six_regression_image_groups_and_persona_17_only",
+  "policy": {
+    "id": "adjudicated-regression-policy-v1",
+    "atomic_targets": true,
+    "image_channels": "pixels_without_gold_then_text_gold_without_pixels",
+    "coverage_direction": "answer_entails_all_conditions_of_target",
+    "truth_direction": "gold_entails_claim",
+    "unknown_gold_details": "unverifiable_not_automatically_hallucinated",
+    "partial_targets": "not_covered",
+    "color_rule": "coarse_light_hair_accepts_white_silver_light_gray_not_dark_hair",
+    "clothing_rule": "outer_inner_trim_and_background_are_separate",
+    "negation_quote_rule": "keep_exact_contiguous_span_do_not_distribute_omitted_negation",
+    "repair_rule": "no_semantic_upgrade_on_format_repair_require_review_if_decisions_change",
+    "current_judge_repair_rule_enforced": false,
+    "judge_calibration_required_before_paid_regression": true,
+    "heldout_reviewed": false
+  },
+  "image_reviews": [
+    {
+      "source_sha256": "bc255bfc654bbce1866e793e2b5dffd5f94687acd0cf60f5f1b3390f813840e2",
+      "group_id": "image-bc255bfc654b",
+      "decision": "split_compound_target_and_remove_unsupported_color_precision",
+      "gold": {
+        "instrument": "人物抱着或演奏琵琶。",
+        "hair_length": "人物有长发。",
+        "hair_tone": "人物头发为浅色。"
+      },
+      "reason": "正常图与384小图均可见向右飘动的长发和琵琶；光照下灰白、银白的区别不宜作为硬性细色标准。保留发长与乐器要求，不接受短发或吉他。",
+      "rubric": "发长与发色分别核验；浅灰、银灰、灰白、银白或白色可满足浅色目标，不能仅说有头发或把黑发当浅色。刘海短不等于整体短发。"
+    },
+    {
+      "source_sha256": "d02825d4d14e73152c0e8af7fa7ac3dfe8cee35a8c27e2cadf4879ee24df874d",
+      "group_id": "image-d02825d4d14e",
+      "decision": "split_scene_and_objects_into_atomic_targets",
+      "gold": {
+        "water": "背景有河道或水面。",
+        "trees": "背景有树木。",
+        "buildings": "背景有建筑。",
+        "food": "人物身旁的桌上摆有食物或水果。",
+        "flowers": "人物附近有花朵。"
+      },
+      "reason": "树叶同时呈绿黄颜色，原标注将多条件塞入两个目标。河道、建筑、食物和粉红花朵在两种尺寸均可见；拆分不是把有花放宽为任意绿植。",
+      "rubric": "树木不强制逐字说绿色；水乡河道属于水面。花盆或绿植本身不蕴含有花，必须明确提及花朵；食物目标保留人物身旁桌上的位置关系。"
+    },
+    {
+      "source_sha256": "6b128c7ea06b923532212c60416db15e0b1c6a4dd4e781f559a69ad933822474",
+      "group_id": "image-6b128c7ea06b",
+      "decision": "retain_layout_requirements_but_split_atomic_targets",
+      "gold": {
+        "orientation": "图片为竖向构图。",
+        "poster": "图片是带人物的宣传海报。",
+        "palette": "海报背景以蓝色或蓝紫色为主。",
+        "lower_text": "海报下部有多行文字。"
+      },
+      "reason": "正常图和小图都可看出版式与文字区域；未把读清日期、姓名或场馆列为OCR要求。漏说竖版或下部多行仍是未覆盖，不因旧回答省略而删目标。",
+      "rubric": "竖版和下部多行文字是独立必答目标；只说有文字不足以覆盖下部多行。不要求转录文字或根据可见角色推断身份。否定句引用必须保留原文连续片段。"
+    },
+    {
+      "source_sha256": "4b8819e053933b039e96cade569082fde50a887ea709a6c7d5ff6b01c8374e0c",
+      "group_id": "image-4b8819e05393",
+      "decision": "correct_clothing_color_and_separate_layers",
+      "gold": {
+        "hair_tone": "人物头部可见浅色头发。",
+        "eyes": "人物眼睛为蓝色。",
+        "outer": "人物穿白色为主的外衣。",
+        "inner": "人物外衣内有深色衣物。",
+        "red_trim": "人物服装有红色装饰或飘带。"
+      },
+      "reason": "可见白色外衣、深色内搭与红色饰边/飘带；原红色为主混淆背景及装饰。只标头部可见浅发，不从后方白色部件猜长发或尾部身份。",
+      "rubric": "白红相间不充分说明白色为主的外衣，不能把红背景或红飘带当服装主色。白色、银白可满足浅发；蓝色眼睛必须明确。"
+    },
+    {
+      "source_sha256": "5a93ca83c3b412d0b9852ea885e74cab41224591dfec86cd8816884bd3e0c2aa",
+      "group_id": "image-5a93ca83c3b4",
+      "decision": "correct_object_mislabel_umbrella_not_mushroom",
+      "gold": {
+        "umbrella": "画面中有红色或橙红色的伞。",
+        "steps": "画面中有台阶。",
+        "trees": "背景有树木。",
+        "figure": "浅色头发人物位于台阶场景中。"
+      },
+      "reason": "正常图可见伞骨、伞面与持伞人物，小图仍可辨红伞、台阶与树木。原巨大蘑菇为明确物体错标，不保留为可接受别名。",
+      "rubric": "伞与蘑菇不是同义对象。不得用角色目录名确定身份，也不要求说出鸟类、年代或作品来源。figure 保留人物与台阶的场景关系。"
+    },
+    {
+      "source_sha256": "d91513554e018612e3834a07a65ab9faced4597910366b10215e30c7b1c08674",
+      "group_id": "image-d91513554e01",
+      "decision": "retain_framing_and_replace_subjective_stage_inference",
+      "gold": {
+        "framing": "画面以人物上半身或胸部以上近景为主。",
+        "hair_tone": "人物头发为浅色。",
+        "background": "背景以深蓝色为主。",
+        "lights": "背景有发光的光点或光线。"
+      },
+      "reason": "近景与浅色头发清晰可见；深蓝光点可见，但舞台感是主观解释，不标具体演出活动。历史未提近景的回答仍须缺失 framing。",
+      "rubric": "上半身近景、胸像、头肩特写可表达构图；只说人物不能覆盖 framing。浅色包括灰白、银灰或偏光照的浅色；不可据此推断时间或地点。"
+    }
+  ],
+  "persona_review": {
+    "case_id": "persona-yzl-17",
+    "decision": "explicit_trajectory_fact_scope",
+    "fact_scope": "trajectory",
+    "gold_unchanged": true,
+    "reason": "第一轮明确问朋友关系，末轮问停止玩笑和安慰。跨轮事实目标应检查实际助手轨迹，不强迫末轮复述；若后轮否认朋友关系，不能因首轮正确而豁免身份矛盾。",
+    "rubric": "relationship 按整段实际助手回答核验，不能把用户问题或Persona配置当作已经答出；care 按末轮是否停止伤人的玩笑并安慰判断。后轮若否认或改变朋友关系，persona_consistency 必须不通过。"
+  }
+}

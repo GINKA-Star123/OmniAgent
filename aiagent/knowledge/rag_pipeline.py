@@ -19,8 +19,10 @@ from aiagent.knowledge.index_manifest import (
     save_index_manifest,
 )
 from aiagent.knowledge.index_manifest_models import IndexFreshnessReport
+from aiagent.knowledge.query_normalizer import normalize_rag_query
 from aiagent.knowledge.rag_citations import build_rag_citations
 from aiagent.knowledge.rag_confidence import evaluate_rag_confidence
+from aiagent.knowledge.rag_context import format_rag_chunk
 from aiagent.knowledge.reranker import SimpleReranker
 from aiagent.knowledge.retriever import HybridRetriever, RetrievedChunk
 from aiagent.knowledge.vector_store import LangChainVectorStore
@@ -262,7 +264,7 @@ class RAGPipeline:
 
             return {
                 "ok": True,
-                "query": query,
+                "query": normalize_rag_query(query),
                 "top_k": top_k,
                 "should_inject": confidence.should_inject,
                 "confidence": confidence.model_dump(mode="json"),
@@ -290,20 +292,7 @@ class RAGPipeline:
         }
 
     def _format_chunk(self, chunk: RetrievedChunk, index: int) -> str:
-        source_name = Path(chunk.source_path).name if chunk.source_path else "unknown"
-        cosine_score = f"{chunk.cosine_score:.4f}" if chunk.cosine_score is not None else "无"
-        sources = ", ".join(chunk.retrieval_sources) if chunk.retrieval_sources else "unknown"
-
-        return (
-            f"[知识片段 {index}]\n"
-            f"标题: {chunk.title}\n"
-            f"来源: {source_name}\n"
-            f"召回方式: {sources}\n"
-            f"BM25排名: {chunk.bm25_rank if chunk.bm25_rank is not None else '无'}\n"
-            f"向量排名: {chunk.vector_rank if chunk.vector_rank is not None else '无'}\n"
-            f"余弦相似度: {cosine_score}\n"
-            f"内容:\n{chunk.content.strip()}"
-        )
+        return format_rag_chunk(chunk.model_dump(mode="json"), index)
     def _format_debug_chunks(self, chunks: list[dict[str, Any]]) -> str:
         if not chunks:
             return "无相关知识"
@@ -315,24 +304,7 @@ class RAGPipeline:
 
 
     def _format_debug_chunk(self, chunk: dict[str, Any], index: int) -> str:
-        source_path = str(chunk.get("source_path", ""))
-        source_name = Path(source_path).name if source_path else "unknown"
-        sources = chunk.get("retrieval_sources") or []
-        source_text = ", ".join(str(item) for item in sources) if sources else "unknown"
-
-        cosine_score = chunk.get("cosine_score")
-        cosine_text = f"{cosine_score:.4f}" if isinstance(cosine_score, (int, float)) else "无"
-
-        return (
-            f"[知识片段 {index}]\n"
-            f"标题: {chunk.get('title', '')}\n"
-            f"来源: {source_name}\n"
-            f"召回方式: {source_text}\n"
-            f"BM25排名: {chunk.get('bm25_rank') if chunk.get('bm25_rank') is not None else '无'}\n"
-            f"向量排名: {chunk.get('vector_rank') if chunk.get('vector_rank') is not None else '无'}\n"
-            f"余弦相似度: {cosine_text}\n"
-            f"内容:\n{str(chunk.get('content', '')).strip()}"
-        )
+        return format_rag_chunk(chunk, index)
     def _save_documents(self, documents: list[Document]) -> None:
         self.docs_index_path.parent.mkdir(parents=True, exist_ok=True)
 

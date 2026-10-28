@@ -4,6 +4,7 @@ import pytest
 
 from aiagent.knowledge.query_normalizer import (
     expand_domain_terms,
+    is_birthday_fact_query,
     normalize_aliases,
     normalize_rag_query,
 )
@@ -88,3 +89,34 @@ def test_expand_domain_terms_reaches_fixed_point():
 
     assert "阿绫红" in expanded          # 来自 代表色 规则（被 设定 的 term 触发）
     assert expand_domain_terms(expanded) == expanded
+
+
+@pytest.mark.parametrize("query", ["猫尾++生日是几月几日？", "欧阳夜语的诞生日", "星桥生日", "牙哥的生日是什么时候？"])
+def test_profile_birthday_does_not_expand_to_events(query):
+    normalized = normalize_rag_query(query)
+    assert "诞生祭" not in normalized
+    assert "生贺曲" not in normalized
+    assert is_birthday_fact_query(query)
+    assert normalize_rag_query(normalized) == normalized
+
+
+@pytest.mark.parametrize("query", ["猫尾++有哪些生贺曲？", "星桥的生日活动", "星桥的诞生祭", "星桥生日会", "星桥的生日歌曲"])
+def test_explicit_birthday_music_and_events_still_expand(query):
+    normalized = normalize_rag_query(query)
+    assert "诞生祭" in normalized and "生贺曲" in normalized
+    assert not is_birthday_fact_query(query)
+    assert normalize_rag_query(normalized) == normalized
+
+
+@pytest.mark.parametrize("query", [
+    "为星桥写一段生日祝福", "设计星桥生日礼物", "猫尾++是谁", "有哪些歌曲？",
+    "星桥生日前一天发布了哪首歌", "星桥生日当天有什么节目",
+])
+def test_other_intents_are_not_treated_as_birthday_dates(query):
+    assert not is_birthday_fact_query(query)
+
+
+def test_profile_expansion_does_not_transitively_add_birthday_music():
+    query = normalize_rag_query("角色资料介绍")
+    assert "生日" in query
+    assert "生贺曲" not in query and "诞生祭" not in query

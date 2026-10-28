@@ -1,0 +1,31 @@
+{
+  "version": "judge-adjudication-calibration-v1",
+  "status": "agent_labeled_not_independent_judge_validated",
+  "note": "离线参照例，不是已运行的模型判词，也不是普通业务Dataset。每例只针对给定单条声明与目标判断。",
+  "cases": [
+    {"id": "umbrella-correct", "answer": "画面中有红色的伞。", "gold": "画面中有红色的伞。", "relation": "entailed", "truth": "correct"},
+    {"id": "umbrella-not-mushroom", "answer": "画面中有红色的伞。", "gold": "画面中有红褐色蘑菇。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "partial-not-majority", "answer": "人物穿白红相间的上衣。", "gold": "人物穿红色为主的上衣。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "majority-entails-red", "answer": "人物穿红色为主的上衣。", "gold": "人物上衣含红色。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "background-not-clothes", "answer": "背景有红色圆形图案。", "gold": "人物穿红色为主的上衣。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "outer-not-inner", "answer": "人物内搭为深色。", "gold": "人物外衣为白色。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "silver-is-light", "answer": "人物有银白色头发。", "gold": "人物头发为浅色。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "dark-is-not-light", "answer": "人物整头头发均为黑色。", "gold": "人物整头头发均为白色。", "relation": "contradicted", "truth": "incorrect"},
+    {"id": "short-not-long", "answer": "人物只有齐耳短发，没有长发。", "gold": "人物有长发。", "relation": "contradicted", "truth": "incorrect"},
+    {"id": "instrument-extra-details", "answer": "人物正在弹奏一把棕色琵琶。", "gold": "人物演奏琵琶。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "fruit-specific", "answer": "桌上有一盘苹果。", "gold": "桌上有水果。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "fruit-too-general", "answer": "有水果。", "gold": "窗边桌上有一盘苹果。", "relation": "partial", "truth": "correct"},
+    {"id": "location-required", "answer": "远处的桌上有水果。", "gold": "人物身旁的桌上有水果。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "planter-not-flowers", "answer": "右侧有花盆与绿植。", "gold": "右侧有花朵。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "flowers-visible", "answer": "右侧有一束粉色花朵。", "gold": "右侧有花朵。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "trees-no-extra-color", "answer": "背景有树木。", "gold": "背景有树木。", "relation": "entailed", "truth": "correct"},
+    {"id": "trees-color-missing", "answer": "背景有树木。", "gold": "背景有绿色树木。", "relation": "partial", "truth": "correct"},
+    {"id": "poster-text-too-general", "answer": "海报上有文字。", "gold": "海报下部有多行文字。", "relation": "partial", "truth": "correct"},
+    {"id": "poster-text-specific", "answer": "海报下半部排列着多行文字。", "gold": "海报下部有多行文字。", "relation": "entailed", "truth": "correct"},
+    {"id": "poster-framing-omitted", "answer": "这是一张人物海报。", "gold": "海报为竖向构图。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "framing-present", "answer": "画面为人物头肩特写。", "gold": "画面以人物上半身或胸部以上近景为主。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "framing-not-answered", "answer": "画面有一名人物。", "gold": "画面以人物上半身近景为主。", "relation": "partial", "truth": "correct"},
+    {"id": "extra-year-not-proven", "answer": "演出于2025年举行。", "gold": "有一场演出。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "quote-negation-full", "answer": "画面中没有海边、钢琴或弹琴动作。", "gold": "画面中没有钢琴。", "relation": "entailed", "truth": "unverifiable", "valid_quote": "画面中没有海边、钢琴或弹琴动作", "invalid_quote": "没有钢琴"}
+  ]
+}

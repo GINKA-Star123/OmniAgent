@@ -1,0 +1,60 @@
+{
+  "version": "project-visual-coarse-v2",
+  "base_annotations": "project-eval-visual-annotations.json",
+  "review_method": "agent_contact_sheet_visual_review_2026-10-26",
+  "limitations": "本次查看全部五张联系表，复核基础12张并补充12张可见粗粒度事实。不是用户人工确认；不提供角色身份、作品出处或完整OCR真值。缩略图不足以支撑细节标注。",
+  "related_image_groups": [
+    ["luotianyi/images/LUO1.jpg", "luotianyi/images/LUO2.jpg"],
+    ["yanhe/images/YAN8.jpg", "yanhe/images/YAN9.jpg"]
+  ],
+  "images": {
+    "luotianyi/images/LUO11.png": {
+      "source_sha256": "d91513554e018612e3834a07a65ab9faced4597910366b10215e30c7b1c08674",
+      "gold": {"framing": "画面以浅灰色头发人物的上半身近景为主。", "background": "背景偏深蓝色，有发光的舞台感光线。"}
+    },
+    "luotianyi/images/LUO16.jpg": {
+      "source_sha256": "d02825d4d14e73152c0e8af7fa7ac3dfe8cee35a8c27e2cadf4879ee24df874d",
+      "gold": {"scene": "人物在有水面、绿树和建筑的场景中。", "objects": "人物旁边摆有食物或水果，周围有花。"}
+    },
+    "luotianyi/images/LUO20.jpg": {
+      "source_sha256": "bea9a6e7c40ed4bb5842c7f1bcd38b33adf4acb55aa1d5afe45dbe7b30f539ad",
+      "gold": {"flowers": "浅灰色长发人物旁边有大片蓝紫色花朵。", "pose": "人物一只眼睛闭着，呈现眨眼表情。"}
+    },
+    "luotianyi/images/LUO21.jpg": {
+      "source_sha256": "d85698ea731077a6e22d19c9cac54b822d945569acf98ed22071e2176dbd6aa7",
+      "gold": {"figure": "画面中心是灰发绿色眼睛的Q版角色。", "objects": "角色周围有花束、信封或音乐符号等装饰。"}
+    },
+    "luotianyi/images/LUO42.jpg": {
+      "source_sha256": "3277e68a7f5fd71d81b59a3a19e1c09026042cf87d7c9b4210185552f4f8a5cb",
+      "gold": {"layout": "画面为带有较大文字的竖版人物海报。", "palette": "画面以金黄色和暖色为主，有红色装饰。"}
+    },
+    "luotianyi/images/LUO43.png": {
+      "source_sha256": "6b128c7ea06b923532212c60416db15e0b1c6a4dd4e781f559a69ad933822474",
+      "gold": {"layout": "画面是竖版深蓝色人物宣传海报。", "text": "海报下半部分有多行文字。"}
+    },
+    "luotianyi/images/LUO48.png": {
+      "source_sha256": "e7235a874e9f49fb0cfa091b0e4b7d40dbc1d76c98d4a528acb6a0eac3972abc",
+      "gold": {"scene": "画面呈水下或海洋主题，有鱼类和漂浮的装饰。", "figure": "画面中有长发人物，整体以蓝色和绿色为主。"}
+    },
+    "yanhe/images/YAN19.png": {
+      "source_sha256": "6cbd4fb098495294c2d489922aa5a7e93af1c2d9efb83a2ced6e435ddba52c13",
+      "gold": {"figure": "画面是浅色短发、蓝色眼睛的Q版角色。", "background": "角色背后有浅蓝色圆形或弧形背景。"}
+    },
+    "yanhe/images/YAN21.jpg": {
+      "source_sha256": "5a93ca83c3b412d0b9852ea885e74cab41224591dfec86cd8816884bd3e0c2aa",
+      "gold": {"scene": "画面中有树木与体积很大的红褐色蘑菇。", "figure": "浅色短发人物位于蘑菇附近，画面是插画场景。"}
+    },
+    "yanhe/images/YAN22.jpg": {
+      "source_sha256": "1e51d4a48b4d243d565b69eb43a1b883d3a7bf8ed8ffd765045555d70c0bf0be",
+      "gold": {"scene": "人物坐在绿色植物较多的场景里。", "clothing": "人物穿着绿色为主的服装，画面为横向构图。"}
+    },
+    "yuezhengling/images/YUE12.png": {
+      "source_sha256": "01e2dcfa3380ef247e3c2b4a04330fb8b3f087f198207c6d48513a3b32f5e3d5",
+      "gold": {"figure": "画面是棕色头发、红色眼睛的Q版人物。", "object": "人物旁边有一盏发光的灯笼或提灯。"}
+    },
+    "yuezhengling/images/YUE33.jpg": {
+      "source_sha256": "b7e9d0748f30271b52fbed274bfca2b9a581c80652f0dea14acc813dcd7e7991",
+      "gold": {"objects": "画面中有翻开的书本。", "layout": "人物与玩偶、彩色装饰围绕书本组成插画画面。"}
+    }
+  }
+}

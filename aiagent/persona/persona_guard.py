@@ -45,10 +45,6 @@ class PersonaGuard:
 
         result = self._trim_repeated_prefix(result)
 
-        if self._looks_too_cold(result):
-            result = self._add_light_persona_tail(result)
-            reasons.append("added_persona_tail")
-
         return PersonaGuardResult(
             text=result.strip(),
             changed=result.strip() != original.strip(),
@@ -89,18 +85,3 @@ class PersonaGuard:
             while doubled in text:
                 text = text.replace(doubled, prefix)
         return text
-
-    def _looks_too_cold(self, text: str) -> bool:
-        if not text:
-            return False
-
-        if "阿绫" in text:
-            return False
-
-        if any(mark in text for mark in ["啦", "呀", "哦", "嘛", "嗯"]):
-            return False
-
-        return len(text) >= 40
-
-    def _add_light_persona_tail(self, text: str) -> str:
-        return f"{text} 嗯，阿绫把重点先给你放在这里。"

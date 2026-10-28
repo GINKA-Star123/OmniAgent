@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
 from collections.abc import Iterable
 from pathlib import Path
@@ -14,6 +16,15 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+
+class EmbeddingValidationError(ValueError):
+    """A stable failure code and structural metadata, never the submitted text or vector values."""
+
+    def __init__(self, code: str, message: str, **details: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details
 
 
 class OpenAICompatibleEmbeddings(Embeddings):
@@ -35,8 +46,15 @@ class OpenAICompatibleEmbeddings(Embeddings):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         embeddings: list[list[float]] = []
-        for batch in self._batches(texts, self.batch_size):
-            embeddings.extend(self._embed_batch(batch))
+        total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
+        for batch_number, batch in enumerate(self._batches(texts, self.batch_size), start=1):
+            logger.info("Embedding batch started: batch=%s/%s items=%s", batch_number, total_batches, len(batch))
+            try:
+                embeddings.extend(self._embed_batch(batch))
+            except EmbeddingValidationError as exc:
+                exc.details.update(batch_number=batch_number, total_batches=total_batches)
+                raise
+            logger.info("Embedding batch completed: batch=%s/%s", batch_number, total_batches)
         return embeddings
 
     def embed_query(self, text: str) -> list[float]:
@@ -52,8 +70,58 @@ class OpenAICompatibleEmbeddings(Embeddings):
         if self.dimensions is not None:
             kwargs["dimensions"] = self.dimensions
 
-        response = self.client.embeddings.create(**kwargs)
-        return [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
+        # Keep response types intact for validation before passing data into native FAISS.
+        # In particular, SDK model coercion can turn a boolean into an accepted float.
+        try:
+            response = self.client.embeddings.with_raw_response.create(**kwargs)
+        except ValueError as exc:
+            raise EmbeddingValidationError(
+                "embedding_request_value_error", "Embedding SDK rejected the request or response before JSON validation",
+                validation_stage="request", expected_count=len(texts), expected_dimensions=self.dimensions,
+            ) from exc
+        try:
+            payload = json.loads(response.content)
+        except ValueError as exc:
+            raise EmbeddingValidationError(
+                "embedding_response_invalid_json", "Embedding response is not valid JSON",
+                validation_stage="response_json", expected_count=len(texts), expected_dimensions=self.dimensions,
+            ) from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        details = {
+            "validation_stage": "response_validation",
+            "expected_count": len(texts),
+            "actual_count": len(data) if isinstance(data, list) else None,
+            "data_type": type(data).__name__,
+            "expected_dimensions": self.dimensions,
+        }
+        if not isinstance(data, list) or len(data) != len(texts):
+            raise EmbeddingValidationError("embedding_response_count_mismatch",
+                                           "Embedding response count does not match request count", **details)
+        if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in data):
+            raise EmbeddingValidationError("embedding_response_index_type",
+                                           "Embedding response indexes must be integers", **details)
+        items = sorted(data, key=lambda item: item["index"])
+        if [item["index"] for item in items] != list(range(len(texts))):
+            raise EmbeddingValidationError("embedding_response_index_mismatch",
+                                           "Embedding response indexes must be unique and contiguous",
+                                           actual_indexes=[item["index"] for item in items[:64]], **details)
+        vectors = [item.get("embedding") for item in items]
+        dimension = self.dimensions
+        for position, vector in enumerate(vectors):
+            vector_details = {**details, "item_position": position, "vector_type": type(vector).__name__,
+                              "actual_dimensions": len(vector) if isinstance(vector, list) else None}
+            if not isinstance(vector, list) or not vector:
+                raise EmbeddingValidationError("embedding_response_vector_type",
+                                               "Embedding response dimension requires a nonempty numeric list", **vector_details)
+            dimension = dimension or len(vector)
+            if len(vector) != dimension:
+                raise EmbeddingValidationError("embedding_response_dimension_mismatch",
+                                               "Embedding response dimension does not match configuration", **vector_details)
+            if any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) for value in vector):
+                raise EmbeddingValidationError("embedding_response_nonfinite_or_nonnumeric",
+                                               "Embedding response must contain finite numeric vectors", **vector_details)
+        return vectors
 
     def _batches(self, items: list[str], size: int) -> Iterable[list[str]]:
         for index in range(0, len(items), size):
@@ -95,7 +163,9 @@ class LangChainVectorStore:
         if not documents:
             raise ValueError("Cannot build vector store from empty documents")
 
+        logger.info("Vector store build started: documents=%s", len(documents))
         self.store = FAISS.from_documents(documents, self.embeddings)
+        logger.info("Vector store build completed: vectors=%s dimension=%s", self.count(), self.index_dimension())
 
     def save(self, directory: str | Path) -> None:
         if self.store is None:

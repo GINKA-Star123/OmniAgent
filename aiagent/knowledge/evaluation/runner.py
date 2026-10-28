@@ -324,12 +324,12 @@ def evaluate_query_case(
 
     try:
         coarse_chunks = pipeline.retriever.retrieve(
-            query=normalized_query,
+            query=case.query,
             vector_store=pipeline.vector_store,
             top_k=coarse_k,
         )
         final_chunks = pipeline.reranker.rerank(
-            query=normalized_query,
+            query=case.query,
             chunks=coarse_chunks,
             top_k=case.retrieval.top_k,
         )
@@ -387,7 +387,7 @@ def evaluate_query_case(
             )
 
         inspection = pipeline.inspect(
-            query=normalized_query,
+            query=case.query,
             top_k=case.retrieval.top_k,
         )
         if "injection" in case.stages:

@@ -156,9 +156,7 @@ def build_case_prompt(case: AnswerCase, dataset: AgentDataset, pipeline, persona
     knowledge = "无相关知识"
     if case.retrieval_case_id is not None:
         source = next(item for item in dataset.retrieval_cases if item.case_id == case.retrieval_case_id)
-        from aiagent.knowledge.query_normalizer import normalize_rag_query
-
-        inspection = pipeline.inspect(query=normalize_rag_query(source.query), top_k=source.retrieval.top_k)
+        inspection = pipeline.inspect(query=source.query, top_k=source.retrieval.top_k)
         knowledge = str(inspection["prompt_context"])
     facts = case.memory_facts if case.memory_enabled else []
     memory = MemoryPromptBuilder().build(

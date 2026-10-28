@@ -14,9 +14,11 @@ from aiagent.graphs.metadata_utils import (
     metadata_strings,
     now_perf,
 )
-from aiagent.knowledge.query_normalizer import normalize_rag_query
+from aiagent.knowledge.fact_answer import extract_birthday_answer
+from aiagent.knowledge.query_normalizer import is_birthday_fact_query, normalize_rag_query
 from aiagent.knowledge.rag_citations import build_rag_citations, citations_to_metadata
 from aiagent.knowledge.rag_confidence import evaluate_rag_confidence
+from aiagent.knowledge.rag_context import format_rag_chunk
 
 
 class RAGGraphState(TypedDict, total=False):
@@ -118,7 +120,7 @@ class RAGRunner:
             mark_stage_started(
                 {
                     "rag_query_source": "planner+fallback"
-                    if graph_input.planner_query.strip()
+                    if graph_input.planner_query.strip() and not is_birthday_fact_query(graph_input.user_text)
                     else "fallback",
                     "planner_should_retrieve": graph_input.planner_should_retrieve,
                 },
@@ -127,6 +129,7 @@ class RAGRunner:
             "rag_build_query",
             started_at,
             rag_query=query,
+            rag_normalized_query=normalize_rag_query(query),
         )
 
         return {
@@ -153,8 +156,8 @@ class RAGRunner:
         metadata = dict(state.get("metadata", {}))
 
         try:
-            raw_context = self.rag_pipeline.search(query=query, top_k=self.top_k)
             raw_debug = self.rag_pipeline.debug_retrieve(query=query, top_k=self.top_k)
+            raw_context = [format_rag_chunk(chunk, index) for index, chunk in enumerate(raw_debug, start=1)]
         except Exception as exc:
             metadata = mark_stage_failed(
                 metadata,
@@ -252,6 +255,7 @@ class RAGRunner:
         result = RAGGraphResult(
             query=query,
             should_inject=bool(context),
+            grounded_fact=extract_birthday_answer(state["input"].user_text, debug) if context else None,
             context=context,
             debug_chunks=debug,
             citations=citations,
@@ -263,10 +267,12 @@ class RAGRunner:
 
 
     def _build_search_query(self, user_text: str, planner_query: str = "", state_topic: str = "") -> str:
+        if is_birthday_fact_query(user_text):
+            return user_text.strip()
         base_parts = [
             planner_query.strip(),
             user_text.strip(),
             state_topic.strip(),
         ]
         query = " ".join(part for part in base_parts if part)
-        return normalize_rag_query(query)
+        return query

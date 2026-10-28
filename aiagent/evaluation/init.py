@@ -1,0 +1,1 @@
+"""Cross-component evaluation; production adapters are imported lazily."""

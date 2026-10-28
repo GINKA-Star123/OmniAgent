@@ -15,10 +15,10 @@ AIAgent 是一个统一运行时：对话、长期记忆、RAG 知识检索、�
 | 项 | 状态 |
 | --- | --- |
 | 后端 V1.1 | 已收口：智能体质量、云运维可观测性、安全边界 |
-| V1.2 十批优化 | 第 1 批（基线与范围）、第 2 批（多 Worker 执行状态一致性）已交付；第 3-10 批见 [十批实施计划](docs/v1.2-ten-batch-implementation-plan.md) |
+| V1.2 后端 | 第三批容器交付与第四批专项评测已有记录；当前聚焦四层评测，第五批暂不推进。见[实施计划](docs/v1.2/v1.2-ten-batch-implementation-plan.md)及[评测入口](docs/quality/README.md) |
 | 手机端 | `1.0.0-rc.1+1`，文本 / 图片 / 录音 / ASR / TTS / 记忆 / 设置闭环 |
 | 桌面端 | QML 版已重写并通过自检；打包脚本就绪（首次打包需先装 MSVC C++ 组件） |
-| 测试规模 | `pytest --collect-only` 收集 **352** 个测试；静态基线统计 **343** 个测试函数、8 项缺陷（P0 2）、10 项优化 |
+| 验证状态 | 按具体报告、代码条件与测试范围记录，不在首页维护易过期的收集数；见[评测总流程](docs/quality/project-evaluation-workflow.md) |
 
 ## 项目结构
 
@@ -69,12 +69,10 @@ tests/                Python 单元 / 契约 / 冒烟 / RAG 质量测试
 
 ~~~powershell
 cd F:\aiagent
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt
-uv pip install --python .venv\Scripts\python.exe -r requirements-cloud.txt   # 云端附加：redis / boto3
+uv sync --locked --extra dev
 ~~~
 
-如果习惯用 `uv sync`，注意 `pyproject.toml` 里的依赖是仓库包的子集，Web 依赖（fastapi / uvicorn 等）
-在 `requirements.txt` 中声明。
+当前依赖由 `pyproject.toml` 与 `uv.lock` 管理，已包含 FastAPI/Uvicorn。同步前确认目标虚拟环境及额外安装依赖；不要为查看文档无故重装既有评测副本。部署构建按 `deploy/` 对应 Dockerfile 执行，不把历史 requirements 安装片段当作锁定环境。
 
 ## 快速开始
 
@@ -97,7 +95,7 @@ cd F:\aiagent
 Copy-Item .env.example .env      # 已存在则不要覆盖
 ~~~
 
-`.env` 与 `.env.example` 是**同一套分区、同样组内字母序**的 173 个变量，便于两份文件直接 diff。
+配置含义以 [配置参考](docs/config-reference.md)、源码及 `.env.example` 为准；私有 `.env` 不提交，不在此维护固定变量数。
 最小开发配置可以保持 mock：
 
 ~~~env
@@ -301,7 +299,7 @@ Python 侧：
 ~~~powershell
 cd F:\aiagent
 .\.venv\Scripts\python.exe -m pytest -q tests\unit tests\api tests\smoke -p no:cacheprovider
-.\.venv\Scripts\python.exe -m pytest --collect-only -q tests      # 当前收集 352 个测试
+.\.venv\Scripts\python.exe -m pytest --collect-only -q tests      # 查看当前环境实际收集数，不执行用例
 ~~~
 
 RAG 检索质量基线：
@@ -321,8 +319,8 @@ RAG 检索质量基线：
 powershell -ExecutionPolicy Bypass -File scripts\test_all.ps1 -ContinueOnFailure
 ~~~
 
-V1.0 最终 smoke 指令见 [docs/v1-final-smoke.md](docs/v1-final-smoke.md)，发布前勾选项见
-[docs/v1-release-checklist.md](docs/v1-release-checklist.md)。
+V1.0 最终 smoke 指令见 [docs/v1.0/v1-final-smoke.md](docs/v1.0/v1-final-smoke.md)，发布前勾选项见
+[docs/v1.0/v1-release-checklist.md](docs/v1.0/v1-release-checklist.md)。
 
 ## 数据与资源
 
@@ -367,25 +365,13 @@ data/logs/              本地日志
 
 ## 参考文档
 
-配置与观测：
+统一从[项目文档导航](docs/README.md)选择配置、运维、评测或版本资料：
 
-- [docs/config-reference.md](docs/config-reference.md) —— 全量环境变量与默认值
-- [docs/api-observability.md](docs/api-observability.md) —— 请求追踪、耗时与错误结构
-- [docs/session-and-turn-boundary.md](docs/session-and-turn-boundary.md) —— 会话 / 轮次边界
-- [docs/repo-governance.md](docs/repo-governance.md) —— 仓库治理约定
-- [docs/quality/rag-eval.md](docs/quality/rag-eval.md) —— RAG 质量基线与阈值
+- [配置参考](docs/config-reference.md)：环境变量、Provider 与默认值。
+- [API 可观测性](docs/api-observability.md)：请求追踪、耗时与错误。
+- [执行状态与部署门禁](docs/operations/v1.2-execution-state-and-gates.md)：共享状态与容器验证。
+- [评测文档](docs/quality/README.md)：当前四层评测与唯一执行流程。
+- [V1.2 实施计划](docs/v1.2/v1.2-ten-batch-implementation-plan.md)：后续批次目标。
+- [仓库治理](docs/repo-governance.md)：版本管理和检查约定。
 
-阶段与路线：
-
-- [docs/next-stage-optimization-roadmap.md](docs/next-stage-optimization-roadmap.md) —— 下一阶段优化路线
-- [docs/v1.2-ten-batch-implementation-plan.md](docs/v1.2-ten-batch-implementation-plan.md) —— V1.2 十批实施计划
-- [docs/v1.2-scope-and-baseline.md](docs/v1.2-scope-and-baseline.md) —— V1.2 范围与基线
-- [docs/v1.2-batch-02-code-delivery.md](docs/v1.2-batch-02-code-delivery.md) —— 第 2 批交付说明
-- [docs/v1-final-smoke.md](docs/v1-final-smoke.md)、[docs/v1-release-checklist.md](docs/v1-release-checklist.md) —— V1.0 冒烟与发布清单
-
-客户端：
-
-- [apps/desktop_qt/README.md](apps/desktop_qt/README.md) —— 桌面端运行、打包、故障排查
-
-> 说明：客户端目录 `apps/desktop_qt/` 与 `apps/flutter_client/` 被根 `.gitignore` 忽略，
-> 因此桌面端与手机端的文档只存在于本地工作区，克隆仓库后不会出现（手机端文档位置见「Flutter 手机端」）。
+客户端说明位于本机的 `apps/desktop_qt/README.md`、`apps/flutter_client/README.md`；其可用性取决于工作区，不作为本轮后端优化范围。

@@ -1,5 +1,9 @@
 # RAG 全链路质量评测
 
+定位：本文是仍有效的aiagent/knowledge/evaluation专项说明，不是当前四组件评测的日常入口。整体步骤按[统一总流程](project-evaluation-workflow.md)执行；本文件历史指标口径不与Judge v2语义指标混报。
+
+2026-10-27 索引替换说明：Windows 原缓存中的历史 RAG A/B 报告和 `rag_eval_v2_split_docs.json` 已随旧目录保留在 `data/cache/knowledge-backup-20261027T092621Z-2838b644`，没有删除。下文 `data/cache/knowledge/reports` 是今后专项运行的默认输出位置，不是原报告当前存放位置；重建/跨系统迁移的当前命令只在总流程第 6.3 节维护。
+
 本文档说明 AIAgent V2 RAG 评测体系的目标、阶段、数据规范、指标、执行入口和失败处理方式。
 
 旧版只测“文档是否召回”的 32 条 baseline 已废弃；旧的 aiagent/knowledge/rag_eval*.py、tests/rag/test_rag_quality_baseline.py 和旧 cases 已删除。

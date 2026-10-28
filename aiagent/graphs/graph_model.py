@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from aiagent.knowledge.fact_answer import GroundedFactAnswer
+
 NO_LONG_TERM_MEMORY_TEXT = "无长期记忆。"
 VISION_ANALYZE_SCHEMA_VERSION = "1.1"
 
@@ -111,6 +113,7 @@ class RAGGraphInput(BaseModel):
 class RAGGraphResult(BaseModel):
     query: str = ""
     should_inject: bool = False
+    grounded_fact: GroundedFactAnswer | None = None
     context: list[str] = Field(default_factory=list)
     debug_chunks: list[dict[str, Any]] = Field(default_factory=list)
     citations:list[dict[str,Any]] = Field(default_factory=list)
@@ -338,6 +341,7 @@ class LLMGraphInput(BaseModel):
     planner_confidence: float = 0.0
 
     retrieved_context: list[str] = Field(default_factory=list)
+    grounded_fact: GroundedFactAnswer | None = None
     long_term_memory_context: str = NO_LONG_TERM_MEMORY_TEXT
 
 class LLMGraphResult(BaseModel):

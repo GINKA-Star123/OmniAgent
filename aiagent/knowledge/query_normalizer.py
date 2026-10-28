@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 
 from aiagent.knowledge.character_aliases import CHARACTER_ALIASES
 
@@ -35,7 +36,7 @@ DOMAIN_EXPANSION_RULES = [
         ["官方专辑", "发行", "收录曲"],
     ),
     (
-        ["生日", "诞生日", "生贺"],
+        ["诞生祭", "生贺", "生日活动", "生日会", "生日直播", "生日演唱会", "生日歌", "生日曲"],
         ["生日", "诞生祭", "生贺曲"],
     ),
     (
@@ -51,6 +52,32 @@ DOMAIN_EXPANSION_RULES = [
         ["相关CP", "南北组", "洛南绫北"],
     ),
 ]
+
+
+def is_birthday_fact_query(query: str) -> bool:
+    """Distinguish a profile date from birthday music, events or creative requests."""
+    if "生日" not in query or any(term in query for term in (
+        "诞生祭", "生贺", "活动", "生日会", "生日歌", "生日曲", "直播", "演唱会", "歌曲", "曲子", "专辑",
+        "庆祝", "祝福", "贺词", "贺图", "礼物", "派对", "创作", "写一", "设计",
+    )):
+        return False
+    return any(term in query for term in (
+        "几月", "几日", "几号", "多少号", "哪天", "哪一天", "什么时候", "何时", "日期", "月日", "哪年", "哪一年",
+    )) or re.search(r"生日(?:是什么|呢|是)?[？?。.!！\s]*$", query) is not None
+
+
+def matches_profile_subject(query: str, source_path: str) -> bool:
+    name = PurePosixPath(source_path.replace("\\", "/")).stem.lower()
+    if len(name) < 2:
+        return False
+    pattern = re.escape(name)
+    if name[0].isascii():
+        pattern = rf"(?<![a-z0-9_./:+-]){pattern}"
+    return re.search(pattern + r"(?![a-z0-9_./:+-])", normalize_aliases(query).lower()) is not None
+
+
+def has_birthday_field(content: str) -> bool:
+    return re.search(r"^\s*(?:[-*]\s+)?(?:\*\*)?生日(?:\*\*)?\s*[:：]", content, re.MULTILINE) is not None
 
 
 def _mask_expansion_terms(text: str) -> str:
