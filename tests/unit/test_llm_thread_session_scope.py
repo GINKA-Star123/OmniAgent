@@ -16,7 +16,7 @@ def test_clear_user_threads_only_touches_that_user(monkeypatch):
     runner = LLMRunner(llm_service=_StubLLMService())
 
     cleared: list[str] = []
-    monkeypatch.setattr(runner, "clear_thread", lambda thread_id: cleared.append(thread_id))
+    monkeypatch.setattr(runner, "clear_thread", lambda thread_id, *, user_id=None: cleared.append(thread_id))
 
     runner._thread_users.update(
         {

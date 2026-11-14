@@ -7,10 +7,11 @@ from tests.helpers.api_contract import (
 )
 
 
-def test_vision_analyze_contract(api_client, tiny_png_path):
+def test_vision_analyze_contract(api_client, tiny_png_path, auth_headers):
     with tiny_png_path.open("rb") as file_obj:
         response = api_client.post(
             "/vision/analyze",
+            headers=auth_headers("vision-user"),
             files={"file": ("tiny.png", file_obj, "image/png")},
             data={
                 "user_id": "vision-user",
@@ -30,10 +31,11 @@ def test_vision_analyze_contract(api_client, tiny_png_path):
     assert "vision_graph_latency_ms" in result["metadata"]
 
 
-def test_vision_chat_contract(api_client, tiny_png_path):
+def test_vision_chat_contract(api_client, tiny_png_path, auth_headers):
     with tiny_png_path.open("rb") as file_obj:
         response = api_client.post(
             "/vision/chat",
+            headers=auth_headers("vision-user"),
             files={"file": ("tiny.png", file_obj, "image/png")},
             data={
                 "user_id": "vision-user",

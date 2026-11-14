@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-import traceback
 from typing import Any
 
 from fastapi import Response
 
+from aiagent.services.generation_errors import GenerationUnavailableError
 from apps.api.request_context import get_request_id
+from apps.api.shared_state_errors import shared_state_error_response
 
 
 def json_response(body: dict[str, Any], status_code: int = 200) -> Response:
@@ -36,29 +37,32 @@ def ok_response(
 
 
 def error_response(
-    *,
-    stage: str,
-    exc: Exception,
-    status_code: int = 500,
-    runtime_error: str | None = None,
-    include_traceback: bool = True,
+    *, stage: str, exc: Exception, status_code: int = 500,
+    runtime_error: str | None = None, include_traceback: bool = True,
     extra: dict[str, Any] | None = None,
 ) -> Response:
-    payload: dict[str, Any] = {
-        "ok": False,
-        "stage": stage,
-        "error": str(exc),
-    }
-
-    if runtime_error:
-        payload["runtime_error"] = runtime_error
-
-    if include_traceback:
-        payload["traceback"] = traceback.format_exc()
-
+    del runtime_error, include_traceback
+    shared_error = shared_state_error_response(exc)
+    if shared_error is not None:
+        return shared_error
+    generation_failed = isinstance(exc, GenerationUnavailableError)
+    if generation_failed:
+        return json_response({
+            "ok": False, "degraded": True, "stage": "llm_generation",
+            "code": exc.code, "error": exc.code,
+            "reply": "暂时无法生成回复，请稍后重试。",
+            "base_reply_text": "", "should_speak": False, "should_store_memory": False,
+            "audio_path": None, "audio_url": None,
+            "audio_segments": [], "audio_segment_urls": [], "audio_segment_texts": [],
+            "metadata": {"llm_inference": "failed", "llm_mock": "false"},
+        }, status_code=503)
+    # 普通用户接口不再回传任意异常正文、traceback 或 runtime 错误文本。
+    payload = {"ok": False, "stage": stage, "error": "request_failed"}
     if extra:
-        payload.update(extra)
-
+        # 只保留无正文的诊断标识，不扩展为任意 metadata 回传。
+        for key in ("call_id", "user_id", "memory_id"):
+            if isinstance(extra.get(key), str):
+                payload[key] = extra[key]
     return json_response(payload, status_code=status_code)
 
 

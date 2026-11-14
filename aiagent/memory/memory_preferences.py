@@ -64,7 +64,7 @@ class MemoryPreferenceStore:
             "agent_id": agent_id,
             "long_term_enabled": bool(long_term_enabled),
             "updated_at": now,
-            "reason": reason.strip() or "user_memory_preference_update",
+            "reason": "user_memory_preference_update",
         }
 
         with self._lock:

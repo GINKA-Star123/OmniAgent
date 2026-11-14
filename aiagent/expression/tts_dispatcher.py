@@ -62,14 +62,14 @@ class TTSDispatcher:
             )
             if not audio_segments:
                 raise RuntimeError("tts provider returned no usable segments")
-        except Exception as exc:
-            self.logger.exception("TTS dispatch failed: %s", exc)
+        except Exception:
+            self.logger.warning("tts_generation_failed")
             packet.metadata["tts"] = "failed"
-            packet.metadata["tts_error"] = str(exc)
+            packet.metadata["tts_error"] = "tts_generation_failed"
             packet.metadata["tts_status"] = "failed"
             packet.metadata["tts_latency_ms"] = elapsed_ms(started_at)
             self.speaking_state.tts_status = "failed"
-            self.speaking_state.tts_error = str(exc)
+            self.speaking_state.tts_error = "tts_generation_failed"
             self.speaking_state.pending_text = ""
             self.speaking_state.last_updated_at = self._now()
             return packet

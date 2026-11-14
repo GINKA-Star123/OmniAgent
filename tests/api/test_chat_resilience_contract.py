@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from aiagent.graphs.main_graph import RAGRunner
+from aiagent.orchestrator.session_manager import SessionManager
+from aiagent.schemas.inputs import InputEvent, InputSource
 from tests.helpers.api_contract import assert_chat_response_contract, assert_json_response
 
 
@@ -34,14 +36,20 @@ def test_chat_echoes_explicit_session_id(api_client, test_user):
     data = assert_json_response(_chat(api_client, test_user, session_id="s-contract-1"))
     metadata = data["metadata"]
 
-    assert metadata["session_id"] == "s-contract-1"
-    assert metadata["turn_id"].startswith("s-contract-1:")
+    expected = SessionManager().resolve_session_id(InputEvent(
+        source=InputSource.CHAT, user_id=test_user["user_id"], session_id="s-contract-1",
+    ))
+    assert metadata["session_id"] == expected
+    assert metadata["turn_id"].startswith(f"{expected}:")
 
 
 def test_chat_falls_back_to_default_session_id(api_client, test_user):
     data = assert_json_response(_chat(api_client, test_user))
 
-    assert data["metadata"]["session_id"] == f"chat:{test_user['user_id']}"
+    expected = SessionManager().resolve_session_id(InputEvent(
+        source=InputSource.CHAT, user_id=test_user["user_id"],
+    ))
+    assert data["metadata"]["session_id"] == expected
 
 
 def test_chat_turn_id_is_unique_per_request(api_client, test_user):
@@ -49,5 +57,6 @@ def test_chat_turn_id_is_unique_per_request(api_client, test_user):
     second = assert_json_response(_chat(api_client, test_user, session_id="s-turn"))
 
     assert first["metadata"]["turn_id"] != second["metadata"]["turn_id"]
-    assert first["metadata"]["turn_id"].startswith("s-turn:")
-    assert second["metadata"]["turn_id"].startswith("s-turn:")
+    assert first["metadata"]["session_id"] == second["metadata"]["session_id"]
+    for data in (first, second):
+        assert data["metadata"]["turn_id"].startswith(f"{data['metadata']['session_id']}:")

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from aiagent.graphs.graph_model import VISION_ANALYZE_SCHEMA_VERSION
+from aiagent.vision.gif_frames import DEFAULT_GIF_POLICY, ImageInputError
 from apps.api.request_context import get_request_id
 from apps.api.response_utils import error_message_response, error_response, ok_response
 from apps.core.runtime_registry import get_runtime, get_runtime_error
@@ -20,7 +22,7 @@ logger = logging.getLogger("aiagent.api.vision")
 task_queue = CloudTaskQueue(prefix=cloud_settings.redis_prefix)
 
 # 与 ImageStore.allowed_extensions 对齐的 MIME 白名单。
-ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _validate_upload(file: UploadFile) -> str:
@@ -88,10 +90,10 @@ async def analyze_image(
 
         return ok_response(result=result.model_dump(mode="json"))
 
-    except ValueError as exc:
-        # ImageStore 抛出的都是"用户上传问题"，返回 400 而不是 500。
-        logger.warning("Vision upload rejected: %s", exc)
-        return error_message_response(stage="vision_upload", error=str(exc), status_code=400)
+    except ImageInputError:
+        return error_message_response(
+            stage="vision_upload", error="invalid_or_unsupported_image", status_code=400,
+        )
 
     except Exception as exc:
         logger.exception("Vision analyze failed: %s", exc)
@@ -111,9 +113,6 @@ async def vision_chat(
 
     try:
         runtime = get_runtime()
-    except ValueError as exc:
-        logger.warning("Vision chat upload rejected %s",exc)
-        return error_message_response(stage="vision_upload",error=str(exc),status_code=400)
     except Exception as exc:
         logger.exception("Runtime init failed in /vision/chat: %s", exc)
         return error_response(
@@ -173,6 +172,10 @@ async def vision_chat(
             },
         )
 
+    except ImageInputError:
+        return error_message_response(
+            stage="vision_upload", error="invalid_or_unsupported_image", status_code=400,
+        )
     except Exception as exc:
         logger.exception("Vision chat failed: %s", exc)
         return error_response(stage="vision_chat", exc=exc, status_code=500)
@@ -240,7 +243,18 @@ def vision_schema():
             "model_not_considering",
             "low_confidence_scene",
             "unsupported_image_type",
+            "gif_transient_media",
         ],
         allowed_content_types=sorted(ALLOWED_IMAGE_CONTENT_TYPES),
         max_image_bytes=settings.vision_max_image_bytes,
+        gif={
+            "supported": True,
+            "strategy": "uniform_frame_index",
+            "provider_input": "ordered_jpeg_images",
+            "requires_multi_image_provider": True,
+            "requires_final_trailer": True,
+            "allows_trailing_bytes": False,
+            "memory_hint_allowed": False,
+            "limits": asdict(DEFAULT_GIF_POLICY),
+        },
     )

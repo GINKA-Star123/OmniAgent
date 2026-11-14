@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,6 +15,7 @@ def test_adapter_uses_existing_memory_api_contract(monkeypatch, tmp_path):
     from aiagent.memory.memory_preferences import MemoryPreferenceStore
     from aiagent.memory.memory_write_audit import MemoryWriteAuditLog
     from aiagent.memory.memory_write_dispatcher import MemoryWriteDispatcher
+    from apps.api import user_auth
     from apps.api.http_server import app
     from apps.api.routes import memory
     from apps.core.runtime import CoreRuntime
@@ -45,6 +48,14 @@ def test_adapter_uses_existing_memory_api_contract(monkeypatch, tmp_path):
 
     monkeypatch.setenv("EVAL_ISOLATED", "1")
     monkeypatch.setenv("EVAL_BASE_URL", "http://testserver")
+    token = "test-evaluation-token-" + "a" * 43
+    monkeypatch.setattr(user_auth.settings, "api_auth_mode", "bearer")
+    monkeypatch.setattr(user_auth.settings, "api_auth_token_sha256_map", json.dumps({
+        hashlib.sha256(token.encode()).hexdigest(): "eval-api-contract",
+    }))
+    monkeypatch.setenv("EVAL_API_TOKEN", token)
+    monkeypatch.setenv("EVAL_API_PRINCIPAL", "eval-api-contract")
+    monkeypatch.delenv("EVAL_API_USER_TOKENS_FILE", raising=False)
     original = httpx.AsyncClient
     monkeypatch.setattr(http_support.httpx, "AsyncClient",
                         lambda **kwargs: original(transport=httpx.ASGITransport(app=app), **kwargs))

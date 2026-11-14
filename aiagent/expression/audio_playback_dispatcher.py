@@ -58,13 +58,13 @@ class AudioPlaybackDispatcher:
             self.audio_player.play_async(str(audio_path))
             self.speaking_state.playback_status = "playing"
             packet.metadata["audio_playback"] = "started_async"
-        except Exception as exc:
+        except Exception:
             self.speaking_state.is_speaking = False
             self.speaking_state.playback_status = "failed"
-            self.speaking_state.last_stop_reason = str(exc)
+            self.speaking_state.last_stop_reason = "audio_playback_failed"
             self.speaking_state.playback_finished_at = datetime.now().isoformat(timespec="seconds")
             self.speaking_state.last_updated_at = datetime.now().isoformat(timespec="seconds")
-            packet.metadata["audio_playback"] = f"failed:{exc}"
+            packet.metadata["audio_playback"] = "failed:audio_playback_failed"
 
         return packet
 
@@ -103,13 +103,13 @@ class AudioPlaybackDispatcher:
             self.speaking_state.playback_status = "playing"
             packet.metadata["audio_playback"] = "started_async_segments"
             packet.metadata["audio_segment_count"] = str(len(valid_segments))
-        except Exception as exc:
+        except Exception:
             self.speaking_state.is_speaking = False
             self.speaking_state.playback_status = "failed"
-            self.speaking_state.last_stop_reason = str(exc)
+            self.speaking_state.last_stop_reason = "audio_playback_failed"
             self.speaking_state.playback_finished_at = datetime.now().isoformat(timespec="seconds")
             self.speaking_state.last_updated_at = datetime.now().isoformat(timespec="seconds")
-            packet.metadata["audio_playback"] = f"failed:{exc}"
+            packet.metadata["audio_playback"] = "failed:audio_playback_failed"
 
         return packet
 

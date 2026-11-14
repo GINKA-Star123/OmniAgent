@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel
 
 from apps.api.response_utils import error_response, ok_response
 from apps.core.runtime_registry import get_runtime, get_runtime_error
+from cloud.config import cloud_settings
 
 router = APIRouter()
 logger = logging.getLogger("aiagent.api.voice")
@@ -44,35 +47,32 @@ def _runtime_or_error(route_name:str):
 
 @router.post("/voice/transcribe")
 async def transcribe_voice(file: UploadFile = File(...)):
-    runtime, error_response_value = _runtime_or_error("/voice/transcribe")
-    if error_response_value is not None:
-        return error_response_value
-
+    runtime, failure = _runtime_or_error("/voice/transcribe")
+    if failure is not None:
+        return failure
+    directory = Path("data/cache/private_asr")
+    directory.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "upload.wav").suffix.lower()
+    if suffix not in {".wav", ".mp3", ".ogg", ".m4a", ".webm"}:
+        return error_response(stage="voice_upload", exc=ValueError("audio_type_invalid"), status_code=400)
+    path = directory / f"{uuid4().hex}{suffix}"
     try:
-        upload_dir = Path("data/cache/uploads")
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
-        suffix = Path(file.filename or "upload.wav").suffix or ".wav"
-        file_path = upload_dir / f"upload_asr{suffix}"
-
-        content = await file.read()
-        file_path.write_bytes(content)
-
-        transcript = runtime.transcribe_audio_file(str(file_path))
-
-        return ok_response(
-            transcript=transcript,
-            file_path=str(file_path),
-        )
-
-    except Exception as exc:
-        logger.exception("/voice/transcribe failed: %s", exc)
-        return error_response(
-            stage="voice_transcribe",
-            exc=exc,
-            status_code=500,
-        )
-        upload_dir = Path
+        total = 0
+        with path.open("xb") as handle:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > cloud_settings.upload_max_bytes:
+                    return error_response(stage="voice_upload", exc=ValueError("audio_too_large"), status_code=413)
+                handle.write(chunk)
+        if total == 0:
+            return error_response(stage="voice_upload", exc=ValueError("audio_empty"), status_code=400)
+        transcript = await asyncio.to_thread(runtime.transcribe_audio_file, str(path))
+        return ok_response(transcript=transcript)
+    except Exception:
+        return error_response(stage="voice_transcribe", exc=RuntimeError("transcription_failed"), status_code=503)
+    finally:
+        path.unlink(missing_ok=True)
+        await file.close()
 
 @router.post("/voice/turn")
 def voice_turn(req: VoiceTurnRequest):

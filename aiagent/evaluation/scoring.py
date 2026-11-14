@@ -5,7 +5,7 @@ import time
 from aiagent.evaluation.contracts import Case, Observation, Result, check_value, digest
 from aiagent.evaluation.http_support import EvaluationHTTPError
 from aiagent.evaluation.metrics import ocr_scores, ranking
-from aiagent.evaluation.semantic import Judge, JudgeError
+from aiagent.evaluation.semantic import Judge, JudgeError, minimum_judge_requests
 from aiagent.knowledge.evaluation.answer import evaluate_answer
 
 
@@ -94,7 +94,9 @@ def score(case: Case, observation: Observation, judge: Judge, key: str) -> Resul
 
 def evaluate_one(case, root, user, judge, key, observer) -> Result:
     started = time.perf_counter()
-    if case.oracle.semantic and getattr(judge, "mode", None) == "provider" and judge.usage["logical_requests"] >= judge.request_budget:
+    required = minimum_judge_requests(case, verify_visual_gold=bool(getattr(judge, "verify_visual_gold", False)))
+    if (case.oracle.semantic and getattr(judge, "mode", None) == "provider"
+            and judge.usage["logical_requests"] + required > judge.request_budget):
         return Result(key=key, case_id=case.case_id, group_id=case.group_id, domain=case.domain, layer=case.layer,
                       status="judge_error", failures=["judge_error"], error_type="JudgeError",
                       error_code="request_budget_exhausted", error_stage="budget")

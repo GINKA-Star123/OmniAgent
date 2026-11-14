@@ -1,0 +1,11 @@
+{
+  "version": "judge-adjudication-calibration-v1",
+  "status": "agent_labeled_development_contrasts_not_human_accepted",
+  "note": "独立4条位置关系开发对照，2条非排他、2条明确冲突；不是heldout，不覆盖旧参照或人工确认，不作为完整校准或发布依据。",
+  "cases": [
+    {"id": "position-can-coexist", "answer": "门旁桌子上有一盘水果。", "gold": "窗边桌子上有一盘水果。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "position-independent-relations", "answer": "唯一那把长椅位于公园里。", "gold": "唯一那把长椅位于河边。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "position-explicit-negation", "answer": "那张桌子在门旁。", "gold": "那张桌子不在门旁。", "relation": "contradicted", "truth": "incorrect"},
+    {"id": "position-exclusive-side", "answer": "唯一那盏台灯只在书桌左侧，不在右侧。", "gold": "唯一那盏台灯在书桌右侧。", "relation": "contradicted", "truth": "incorrect"}
+  ]
+}

@@ -69,9 +69,10 @@ def test_behavior_only_repair_restates_exact_id_sets_without_changing_scores(mon
     case = visual_case().model_copy(update={"kind": "persona", "domain": "persona",
                                            "inputs": {"turns": ["改吃什么？"]}})
     case.oracle = case.oracle.model_copy(update={"gold": {"food": "自然提出替代食物。"}})
-    bad = {"claims": [], "covered_gold_ids": ["food"], "behavior_checks": {"food": "satisfied"},
+    bad = {"claims": [], "covered_gold_ids": [], "coverage_claims": {"food": []},
+           "behavior_checks": {"food": "satisfied"},
            "persona_violation": False, "style_score": 1}
-    good = dict(bad, covered_gold_ids=[])
+    good = dict(bad, coverage_claims={})
     judge, calls = provider(monkeypatch, [response(bad), response(good)],
                             gold_kinds={case.case_id: {"food": "behavior"}})
     metrics = judge.evaluate("fixture@1", case, Observation(scope="provider_component", answer="吃火锅吧。"))

@@ -32,9 +32,9 @@ class OutputBroadcaster:
 
         try:
             packet = self.motion_policy.refine(packet)
-        except Exception as exc:
-            self.logger.exception("Motion policy failed: %s", exc)
-            packet.metadata["motion_policy"] = f"failed:{exc}"
+        except Exception:
+            self.logger.warning("motion_policy_failed")
+            packet.metadata["motion_policy"] = "failed:motion_policy_failed"
 
         if packet.should_speak:
             packet = self._run_tts(packet)
@@ -43,9 +43,9 @@ class OutputBroadcaster:
 
         try:
             packet = self.live2d_dispatcher.dispatch(packet)
-        except Exception as exc:
-            self.logger.exception("Live2D dispatch failed: %s", exc)
-            packet.metadata["live2d"] = f"failed:{exc}"
+        except Exception:
+            self.logger.warning("live2d_dispatch_failed")
+            packet.metadata["live2d"] = "failed:live2d_dispatch_failed"
 
         if self.enable_local_audio_playback:
             packet = self._run_local_playback(packet)
@@ -58,15 +58,15 @@ class OutputBroadcaster:
     def _run_tts(self, packet):
         try:
             return self.tts_dispatcher.dispatch(packet)
-        except Exception as exc:
-            self.logger.exception("TTS dispatch failed: %s", exc)
-            packet.metadata["tts"] = f"failed:{exc}"
+        except Exception:
+            self.logger.warning("tts_dispatch_failed")
+            packet.metadata["tts"] = "failed:tts_dispatch_failed"
             return packet
 
     def _run_local_playback(self, packet):
         try:
             return self.audio_playback_dispatcher.dispatch(packet)
-        except Exception as exc:
-            self.logger.exception("Audio playback dispatch failed in background: %s", exc)
-            packet.metadata["audio_playback"] = f"failed:{exc}"
+        except Exception:
+            self.logger.warning("audio_playback_dispatch_failed")
+            packet.metadata["audio_playback"] = "failed:audio_playback_dispatch_failed"
             return packet

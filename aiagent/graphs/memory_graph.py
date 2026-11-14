@@ -7,33 +7,28 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from aiagent.graphs.degradation import (
-    build_degraded_memory_retrieve_state,
-    build_degraded_memory_store_state,
-)
+from aiagent.graphs.degradation import build_degraded_memory_retrieve_state
 from aiagent.graphs.metadata_utils import (
     mark_stage_done,
     mark_stage_failed,
     mark_stage_skipped,
     now_perf,
 )
+from aiagent.memory.approved_write import ApprovedMemoryWrite, approve_plan, verify_approved
 from aiagent.memory.mem0_memory import Mem0LongTermMemory, MemoryHit
 from aiagent.memory.memory_intake import MemoryIntakeService
-from aiagent.memory.memory_layers import infer_memory_layer
 from aiagent.memory.memory_preferences import MemoryPreferenceStore
 from aiagent.memory.memory_prompt import MemoryPromptBuilder
 from aiagent.memory.memory_write_audit import MemoryWriteAuditLog
 from aiagent.memory.memory_write_dispatcher import MemoryWriteDispatcher
 from aiagent.schemas.memory import (
-    MemoryCategory,
-    MemoryImportance,
     MemoryRecord,
-    MemorySensitivity,
     MemoryStorePlan,
     MemoryWriteAudit,
     MemoryWriteDecision,
 )
 from aiagent.services.memory_policy_llm_service import MemoryPolicyLLMService
+from aiagent.state.shared_state_guard import raise_if_shared_state_error
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +49,7 @@ class MemoryGraphState(TypedDict,total=False):
     memory_pinned_records: list[MemoryRecord]
     memory_prompt_context_data:dict[str,Any]
     store_result:dict[str,Any]
+    approved_write: ApprovedMemoryWrite | None
     metadata:dict[str,Any]
 
 class MemoryRunner:
@@ -81,6 +77,7 @@ class MemoryRunner:
         self.audit_log = audit_log or MemoryWriteAuditLog()
         self.async_write_enabled = bool(async_write_enabled)
         self.graph = self._build_graph()
+        self.prepare_graph = self._build_prepare_graph()
 
     def _build_graph(self):
         graph = StateGraph(MemoryGraphState)
@@ -99,6 +96,18 @@ class MemoryRunner:
         )
         graph.add_edge("store",END)
         return graph.compile()
+
+    def _build_prepare_graph(self):
+        graph = StateGraph(MemoryGraphState)
+        graph.add_node("retrieve", self._retrieve_node)
+        graph.add_node("decide_write", self._decide_write_node)
+        graph.add_node("guard_write", self._guard_write_node)
+        graph.add_edge(START, "retrieve")
+        graph.add_edge("retrieve", "decide_write")
+        graph.add_edge("decide_write", "guard_write")
+        graph.add_edge("guard_write", END)
+        return graph.compile()
+
 
     def retrieve_before_reply(
         self,
@@ -133,7 +142,8 @@ class MemoryRunner:
                 }
             )
         except Exception as exc:
-            # 记忆是可选能力：不可用时返回"无长期记忆"
+            raise_if_shared_state_error(exc)
+            # 可选记忆服务允许降级，共享状态的错误则必须传播。
             return build_degraded_memory_retrieve_state(  #type:ignore
                 user_id=user_id,
                 agent_id=agent,
@@ -141,146 +151,122 @@ class MemoryRunner:
                     {},
                     "memory_retrieve",
                     started_at,
-                    exc,
-                    memory_error=str(exc),
+                    "memory_retrieve_failed",
+                    memory_error="memory_retrieve_failed",
                 ),
             )
 
     def run_after_reply(
-            self,
-            user_id:str,
-            user_name:str,
-            session_id:str,
-            turn_id:str,
-            user_text:str,
-            assistant_text:str,
-            retrieval_query:str,
-            planner_should_store_memory:bool,
-            memory_prompt_context:str = "",
-            metadata:dict[str,Any] |None = None,
-            agent_id:str|None = None
-    ) ->MemoryGraphState:
-        started_at = now_perf()
-        agent = agent_id or self.default_agent_id
-        try:
-            if not self.preference_store.is_enabled(user_id=user_id, agent_id=agent):
-                return {
-                    "user_id": user_id,
-                    "agent_id": agent,
-                    "store_result": {
-                        "ok": False,
-                        "status": "skipped",
-                        "reason": "long_term_memory_disabled_by_user",
-                    },
-                    "metadata": mark_stage_skipped(
-                        metadata or {},
-                        "memory_store",
-                        "long_term_memory_disabled_by_user",
-                        memory_long_term_enabled=False,
-                        memory_error="",
-                    ),
-                }
-            state = self.graph.invoke( # type: ignore
-                {
-                    "user_id": user_id,
-                    "user_name": user_name,
-                    "agent_id": agent_id or self.default_agent_id,
-                    "session_id": session_id,
-                    "turn_id": turn_id,
-                    "user_text": user_text,
-                    "assistant_text": assistant_text,
-                    "retrieval_query": retrieval_query or user_text,
-                    "planner_should_store_memory": planner_should_store_memory,
-                    "memory_prompt_context": memory_prompt_context,
-                    "metadata": metadata or {},
-                }
-            )
-            self._append_audit(state) # type: ignore
-            return state # type:ignore
-        except Exception as exc:
-            self._append_audit_failure(
-                user_id=user_id,
-                agent_id=agent,
-                session_id=session_id,
-                turn_id=turn_id,
-                error=str(exc),
-            )
-            return build_degraded_memory_store_state( # type: ignore
-                user_id=user_id,
-                agent_id=agent,
-                error=exc,
-                metadata=mark_stage_failed(
-                    metadata or {},
-                    "memory_store",
-                    started_at,
-                    exc,
-                    memory_error=str(exc),
-                ),
-            )
-
-    def run_after_reply_async(
-            self,
-            user_id:str,
-            user_name:str,
-            session_id:str,
-            turn_id:str,
-            user_text:str,
-            assistant_text:str,
-            retrieval_query:str,
-            planner_should_store_memory:bool,
-            memory_prompt_context:str = "",
-            metadata:dict[str,Any] |None = None,
-            agent_id:str|None = None
-    ) ->MemoryGraphState:
-        """异步写入入口：立刻返回 queued，真正的策略判断与写盘在后台线程完成。
-
-        失败只体现在 write_status()/审计日志里，永远不会影响本轮回复。
-        """
-        agent = agent_id or self.default_agent_id
-
-        if not self.async_write_enabled:
-            return self.run_after_reply(
-                user_id=user_id,
-                user_name=user_name,
-                session_id=session_id,
-                turn_id=turn_id,
-                user_text=user_text,
-                assistant_text=assistant_text,
-                retrieval_query=retrieval_query,
-                planner_should_store_memory=planner_should_store_memory,
-                memory_prompt_context=memory_prompt_context,
-                metadata=metadata,
-                agent_id=agent,
-            )
-
-        submitted = self.write_dispatcher.submit(
-            self.run_after_reply,
-            user_id=user_id,
-            user_name=user_name,
-            session_id=session_id,
-            turn_id=turn_id,
-            user_text=user_text,
-            assistant_text=assistant_text,
-            retrieval_query=retrieval_query,
+        self, user_id: str, user_name: str, session_id: str, turn_id: str,
+        user_text: str, assistant_text: str, retrieval_query: str,
+        planner_should_store_memory: bool, memory_prompt_context: str = "",
+        metadata: dict[str, Any] | None = None, agent_id: str | None = None,
+    ) -> MemoryGraphState:
+        return self._write_after_reply(
+            user_id=user_id, user_name=user_name, session_id=session_id, turn_id=turn_id,
+            user_text=user_text, assistant_text=assistant_text, retrieval_query=retrieval_query,
             planner_should_store_memory=planner_should_store_memory,
-            memory_prompt_context=memory_prompt_context,
-            metadata=metadata or {},
-            agent_id=agent,
+            memory_prompt_context=memory_prompt_context, metadata=metadata,
+            agent_id=agent_id, background=False,
         )
 
-        return {
-            "user_id": user_id,
-            "agent_id": agent,
-            "store_result": submitted,
-            "metadata": mark_stage_done(
-                metadata or {},
-                "memory_store_dispatch",
-                now_perf(),
-                memory_write_status=str(submitted.get("status", "")),
-                memory_write_task_id=str(submitted.get("task_id", "")),
-                memory_write_async=True,
-            ),
-        }
+    def run_after_reply_async(
+        self, user_id: str, user_name: str, session_id: str, turn_id: str,
+        user_text: str, assistant_text: str, retrieval_query: str,
+        planner_should_store_memory: bool, memory_prompt_context: str = "",
+        metadata: dict[str, Any] | None = None, agent_id: str | None = None,
+    ) -> MemoryGraphState:
+        return self._write_after_reply(
+            user_id=user_id, user_name=user_name, session_id=session_id, turn_id=turn_id,
+            user_text=user_text, assistant_text=assistant_text, retrieval_query=retrieval_query,
+            planner_should_store_memory=planner_should_store_memory,
+            memory_prompt_context=memory_prompt_context, metadata=metadata,
+            agent_id=agent_id, background=self.async_write_enabled,
+        )
+
+    def _write_after_reply(
+        self, *, user_id, user_name, session_id, turn_id, user_text, assistant_text,
+        retrieval_query, planner_should_store_memory, memory_prompt_context,
+        metadata, agent_id, background,
+    ) -> MemoryGraphState:
+        started_at = now_perf()
+        del user_name, metadata
+        agent = agent_id or self.default_agent_id
+        payload = None
+        preparation_metadata = {}
+        try:
+            if not self.preference_store.is_enabled(user_id=user_id, agent_id=agent):
+                result = {"ok": False, "status": "skipped", "reason": "memory_disabled"}
+            else:
+                prepared = self.prepare_graph.invoke({
+                    "user_id": user_id, "agent_id": agent,
+                    "session_id": session_id, "turn_id": turn_id,
+                    "user_text": user_text, "assistant_text": assistant_text,
+                    "retrieval_query": retrieval_query or user_text,
+                    "planner_should_store_memory": planner_should_store_memory,
+                    "memory_prompt_context": memory_prompt_context, "metadata": {},
+                })
+                preparation_metadata = dict(prepared.get("metadata") or {})
+                payload = prepared.get("approved_write")
+                if payload is None:
+                    plan = prepared.get("memory_store_plan")
+                    status = getattr(plan, "status", "blocked")
+                    result = {"ok": False, "status": status, "reason": "memory_not_approved"}
+                elif background:
+                    # 后台参数唯一字段：签发后的不可变批准载荷。
+                    result = self.write_dispatcher.submit(self._commit_approved, payload=payload)
+                else:
+                    result = self._commit_approved(payload=payload)
+        except Exception as exc:
+            raise_if_shared_state_error(exc)
+            result = {"ok": False, "status": "failed", "reason": "memory_prepare_failed"}
+        if payload is None or result.get("status") in {"queued", "dropped", "failed"}:
+            self._audit_safe(user_id=user_id, agent_id=agent,
+                             status=str(result.get("status", "failed")))
+        status = str(result.get("status", "failed"))
+        extra = {"memory_write_status": status, "memory_write_async": bool(background)}
+        if status == "failed":
+            write_metadata = mark_stage_failed(
+                preparation_metadata, "memory_store", started_at, "memory_write_failed", **extra,
+            )
+        elif status in {"skipped", "blocked", "duplicate", "dropped"}:
+            write_metadata = mark_stage_skipped(
+                preparation_metadata, "memory_store", f"memory_{status}", **extra,
+            )
+        else:
+            write_metadata = mark_stage_done(preparation_metadata, "memory_store", started_at, **extra)
+        return {"user_id": user_id, "agent_id": agent, "store_result": result,
+                "metadata": write_metadata}
+
+    def _commit_approved(self, *, payload: ApprovedMemoryWrite) -> dict[str, Any]:
+        try:
+            verify_approved(payload)
+            if not self.preference_store.is_enabled(user_id=payload.user_id, agent_id=payload.agent_id):
+                result = {"ok": False, "status": "skipped", "reason": "memory_disabled"}
+            else:
+                result = self.memory.add_approved(payload)
+                if not isinstance(result, dict) or result.get("status") not in {"stored", "skipped", "failed"}:
+                    result = {"ok": False, "status": "failed", "reason": "memory_backend_result_invalid"}
+                elif result.get("status") == "stored" and result.get("ok") is not True:
+                    result = {"ok": False, "status": "failed", "reason": "memory_backend_result_invalid"}
+        except Exception as exc:
+            raise_if_shared_state_error(exc)
+            result = {"ok": False, "status": "failed", "reason": "memory_backend_failed"}
+        self._audit_safe(user_id=payload.user_id, agent_id=payload.agent_id,
+                         status=str(result.get("status", "failed")))
+        return result
+
+    def _audit_safe(self, *, user_id: str, agent_id: str, status: str) -> None:
+        allowed = {"stored", "skipped", "blocked", "duplicate", "failed", "queued", "dropped"}
+        status = status if status in allowed else "failed"
+        try:
+            self.audit_log.append(MemoryWriteAudit(
+                audit_id=uuid.uuid4().hex, user_id=user_id, agent_id=agent_id,
+                status=status, reason=f"memory_{status}", memory_text="",
+                source="chat_turn",
+            ))
+        except Exception:
+            logger.warning("memory_audit_unavailable")
 
     def write_status(self) -> dict[str, Any]:
         status = self.write_dispatcher.status()
@@ -294,13 +280,13 @@ class MemoryRunner:
         try:
             records = self.audit_log.tail(user_id=user_id, limit=limit)
             total = self.audit_log.count(user_id=user_id)
-        except Exception as exc:
+        except Exception:
             return {
                 "enabled": True,
                 "count": 0,
                 "records": [],
                 "reason": "audit_read_failed",
-                "error": str(exc),
+                "error": "audit_read_failed",
             }
 
         return {
@@ -323,13 +309,14 @@ class MemoryRunner:
                 limit=self.retrieval_limit,
             )
         except Exception as exc:
+            raise_if_shared_state_error(exc)
             metadata = mark_stage_failed(
                 state.get("metadata") or {},
                 "memory_retrieve",
                 started_at,
-                exc,
-                memory_error=str(exc),
-                memory_retrieval_query=query,
+                "memory_retrieve_failed",
+                memory_error="memory_retrieve_failed",
+                memory_retrieval_query="",
             )
             return {
                 "memory_hits": [],
@@ -348,7 +335,8 @@ class MemoryRunner:
                 limit=self.prompt_builder.pinned_limit,
             )
         except Exception as exc:
-            pinned_error = str(exc)
+            raise_if_shared_state_error(exc)
+            pinned_error = "memory_pinned_retrieve_failed"
             pinned_records = []
 
         combined_hits = self._merge_hits(
@@ -368,7 +356,7 @@ class MemoryRunner:
             "memory_retrieve",
             started_at,
             memory_error="",
-            memory_retrieval_query=query,
+            memory_retrieval_query="",
             memory_hit_count=len(combined_hits),
             memory_retrieved_hit_count=len(hits),
             memory_pinned_count=len(pinned_records),
@@ -392,46 +380,32 @@ class MemoryRunner:
         }
     def _decide_write_node(self, state: MemoryGraphState) -> MemoryGraphState:
         started_at = now_perf()
-
         try:
             decision = self.policy_service.decide_write(
-                user_text=state.get("user_text", ""),  # type: ignore
-                assistant_text=state.get("assistant_text", ""),  # type: ignore
-                existing_memory_context=state.get("memory_prompt_context", ""),  # type: ignore
-                planner_should_store_memory=bool(
-                    state.get("planner_should_store_memory", False)
-                ),
-            )
-        except Exception as exc:
-            metadata = mark_stage_failed(
-                state.get("metadata") or {},
-                "memory_decide_write",
-                started_at,
-                exc,
-                memory_error=str(exc),
+                user_text=state.get("user_text", ""),
+                assistant_text=state.get("assistant_text", ""),
+                existing_memory_context=state.get("memory_prompt_context", ""),
+                planner_should_store_memory=bool(state.get("planner_should_store_memory")),
             )
             return {
-                "metadata": metadata,
+                "write_decision": decision,
+                "metadata": mark_stage_done(
+                    state.get("metadata"), "memory_decide_write", started_at,
+                    memory_write_should_store=decision.should_store,
+                ),
             }
-
-        metadata = mark_stage_done(
-            state.get("metadata") or {},
-            "memory_decide_write",
-            started_at,
-            memory_write_should_store=decision.should_store,
-            memory_write_category=decision.category.value,
-            memory_write_importance=decision.importance.value,
-            memory_write_reason=decision.reason,
-        )
-
-        return {
-            "write_decision": decision,
-            "metadata": metadata,
-        }
+        except Exception as exc:
+            raise_if_shared_state_error(exc)
+            return {
+                "write_decision": MemoryWriteDecision(),
+                "metadata": mark_stage_failed(
+                    state.get("metadata"), "memory_decide_write", started_at,
+                    "memory_policy_failed",
+                ),
+            }
 
     def _guard_write_node(self, state: MemoryGraphState) -> MemoryGraphState:
         started_at = now_perf()
-
         try:
             plan = self.intake_service.build_store_plan(
                 decision=state.get("write_decision"),
@@ -440,108 +414,64 @@ class MemoryRunner:
                 user_text=state.get("user_text", ""),
                 assistant_text=state.get("assistant_text", ""),
             )
+            payload = None
+            if plan.should_store:
+                payload = approve_plan(
+                    plan, user_id=state["user_id"], ## type: ignore
+                    agent_id=state.get("agent_id") or self.default_agent_id,
+                    session_id=state.get("session_id", ""), turn_id=state.get("turn_id", ""),
+                )
+            return {"memory_store_plan": plan, "approved_write": payload,
+                    "metadata": mark_stage_done(
+                        state.get("metadata"), "memory_guard_write", started_at,
+                        memory_store_plan_status=plan.status,
+                    )}
         except Exception as exc:
-            metadata = mark_stage_failed(
-                state.get("metadata") or {},
-                "memory_guard_write",
-                started_at,
-                exc,
-                memory_error=str(exc),
-            )
+            raise_if_shared_state_error(exc)
+            return {"approved_write": None,
+                    "memory_store_plan": MemoryStorePlan(status="blocked", reason="approval_failed"),
+                    "metadata": mark_stage_failed(
+                        state.get("metadata"), "memory_guard_write", started_at,
+                        "memory_approval_failed",
+                    )}
 
-            return {
-                "memory_store_plan": None, # type: ignore
-                "metadata": metadata,
-            }
-
-        metadata = mark_stage_done(
-            state.get("metadata") or {},
-            "memory_guard_write",
-            started_at,
-            memory_error="",
-            memory_store_plan_status=plan.status,
-            memory_store_plan_reason=plan.reason,
-            memory_guard_sensitivity=plan.guard.sensitivity.value,
-            memory_guard_flags=",".join(plan.guard.flags),
-            memory_dedup_duplicate=plan.dedup.duplicate,
-            memory_dedup_similarity=plan.dedup.similarity,
-            memory_store_plan_layer=infer_memory_layer(plan.category).value
-        )
-
-        return {
-            "memory_store_plan": plan,
-            "metadata": metadata,
-        }
-
-    def _route_after_decision(self,state:MemoryGraphState) ->str:
-        decision = state.get("write_decision") # type: ignore
-        return "store" if decision and decision.should_store else "end"
-
-    def _route_after_guard(self,state:MemoryGraphState) ->str:
-        plan = state.get("memory_store_plan") # type: ignore
-        return "store" if plan and plan.should_store else "end"
+    def _route_after_guard(self, state: MemoryGraphState) -> str:
+        return "store" if state.get("approved_write") is not None else "end"
 
     def _store_node(self, state: MemoryGraphState) -> MemoryGraphState:
         started_at = now_perf()
-        plan = state["memory_store_plan"] # type: ignore
-        decision = state["write_decision"]  # type: ignore
-        memory_layer = infer_memory_layer(decision.category)
-        metadata = {
-            **(state.get("metadata") or {}),
-            "category": decision.category.value,
-            "importance": decision.importance.value,
-            "policy_reason": decision.reason,
-            "memory_hint": decision.memory_hint,
-            "memory_guard_status": plan.status,
-            "memory_guard_reason": plan.reason,
-            "memory_layer": memory_layer.value,
-            "source": plan.source or "chat_turn",
-            "created_at": plan.created_at or self._utc_now(),
-            "dedup_duplicate": plan.dedup.duplicate,
-            "dedup_similarity": plan.dedup.similarity,
-        }
-
-        try:
-            result = self.memory.add_turn(
-                user_id=state["user_id"],  # type: ignore
-                user_name=state.get("user_name", ""),
-                user_text=state.get("user_text", ""),
-                assistant_text=state.get("assistant_text", ""),
-                session_id=state.get("session_id", ""),
-                turn_id=state.get("turn_id", ""),
-                agent_id=state.get("agent_id") or self.default_agent_id,
-                metadata=metadata,
-            )
-        except Exception as exc:
-            metadata = mark_stage_failed(
-                metadata,
-                "memory_store",
-                started_at,
-                exc,
-                memory_error=str(exc),
-            )
+        payload = state.get("approved_write")
+        plan = state.get("memory_store_plan")
+        if payload is None or plan is None or not (
+            plan.should_store and plan.status == "ready" and plan.guard.allowed
+            and not plan.dedup.duplicate
+            and plan.memory_text == plan.guard.redacted_text == payload.text
+            and payload.user_id == state.get("user_id")
+            and payload.agent_id == (state.get("agent_id") or self.default_agent_id)
+        ):
             return {
-                "store_result": {
-                    "ok": False,
-                    "status": "failed",
-                    "error": str(exc),
-                },
-                "metadata": metadata,
+                "store_result": {"ok": False, "status": "blocked", "reason": "approval_invalid"},
+                "metadata": mark_stage_skipped(
+                    state.get("metadata"), "memory_store", "approval_invalid",
+                    memory_write_status="blocked",
+                ),
             }
-
-        metadata = mark_stage_done(
-            metadata,
-            "memory_store",
-            started_at,
-            memory_error="",
-            memory_store_status="stored",
-            memory_store_layer=memory_layer.value
-        )
-
-        return {
-            "store_result": result,
-            "metadata": metadata,
-        }
+        result = self._commit_approved(payload=payload)
+        status = str(result.get("status", "failed"))
+        if status == "stored":
+            metadata = mark_stage_done(
+                state.get("metadata"), "memory_store", started_at, memory_write_status=status,
+            )
+        elif status == "skipped":
+            metadata = mark_stage_skipped(
+                state.get("metadata"), "memory_store", "memory_disabled", memory_write_status=status,
+            )
+        else:
+            metadata = mark_stage_failed(
+                state.get("metadata"), "memory_store", started_at,
+                "memory_write_failed", memory_write_status="failed",
+            )
+        return {"store_result": result, "metadata": metadata}
 
     def get_user_preference(self, user_id: str, agent_id: str | None = None):
         return self.preference_store.get(
@@ -592,82 +522,17 @@ class MemoryRunner:
 
         return hits
     def _append_audit(self, state: MemoryGraphState) -> None:
-        """把一次写入决策落进审计日志（stored/duplicate/blocked/skipped 全覆盖）。"""
-        try:
-            store_result = state.get("store_result") or {}
-            if not isinstance(store_result, dict):
-                store_result = {"status": str(store_result)}
-
-            plan = state.get("memory_store_plan")
-            decision = state.get("write_decision")
-
-            status_value = str(store_result.get("status") or "skipped")
-            category = plan.category if plan else (decision.category if decision else MemoryCategory.OTHER)
-            importance = plan.importance if plan else (decision.importance if decision else MemoryImportance.MEDIUM)
-
-            reason = ""
-            source = "chat_turn"
-            memory_text = ""
-            sensitivity = MemorySensitivity.NONE
-            flags: list[str] = []
-
-            if plan is not None:
-                reason = plan.reason
-                source = plan.source or source
-                memory_text = plan.memory_text
-                sensitivity = plan.guard.sensitivity
-                flags = list(plan.guard.flags)
-            elif decision is not None:
-                reason = decision.reason
-
-            self.audit_log.append(
-                MemoryWriteAudit(
-                    audit_id=uuid.uuid4().hex[:12],
-                    user_id=state.get("user_id", "") or "",
-                    agent_id=state.get("agent_id") or self.default_agent_id,
-                    session_id=state.get("session_id", "") or "",
-                    turn_id=state.get("turn_id", "") or "",
-                    status=status_value,
-                    category=category,
-                    importance=importance,
-                    layer=infer_memory_layer(category),
-                    reason=reason,
-                    source=source,
-                    memory_text=memory_text,
-                    sensitivity=sensitivity,
-                    flags=flags,
-                )
-            )
-        except Exception as exc:
-            # 审计只是可观测性，绝不能影响记忆写入结果。
-            logger.warning("Failed to append memory write audit: %s", exc)
+        result = state.get("store_result") or {}
+        self._audit_safe(
+            user_id=state.get("user_id", ""),
+            agent_id=state.get("agent_id") or self.default_agent_id,
+            status=str(result.get("status", "skipped")) if isinstance(result, dict) else "failed",
+        )
 
     def _append_audit_failure(
-            self,
-            *,
-            user_id: str,
-            agent_id: str,
-            session_id: str,
-            turn_id: str,
-            error: str,
+        self, *, user_id: str, agent_id: str, session_id: str, turn_id: str, error: str,
     ) -> None:
-        try:
-            self.audit_log.append(
-                MemoryWriteAudit(
-                    audit_id=uuid.uuid4().hex[:12],
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    session_id=session_id,
-                    turn_id=turn_id,
-                    status="failed",
-                    reason="memory_store_failed",
-                    source="chat_turn",
-                    memory_text="",
-                    flags=[],
-                )
-            )
-        except Exception as exc:
-            logger.warning("Failed to append memory write audit: %s", exc)
+        self._audit_safe(user_id=user_id, agent_id=agent_id, status="failed")
 
     def _utc_now(self) -> str:
         return datetime.now(UTC).isoformat()

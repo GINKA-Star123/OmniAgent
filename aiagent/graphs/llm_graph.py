@@ -14,12 +14,14 @@ from aiagent.knowledge.answer_policy import RAG_FACT_RULES
 from aiagent.knowledge.fact_answer import GroundedFactAnswer
 from aiagent.knowledge.profile_fields import query_profile_fields
 from aiagent.persona.persona_runtime import PersonaRuntime
+from aiagent.services.generation_errors import GenerationUnavailableError
 from aiagent.services.llm_service import LLMService
 from aiagent.state.redis_state_store import RedisStateStore
 from aiagent.state.shared_state import (
     SharedStateOwnershipError,
     ThreadOwnerRecord,
 )
+from aiagent.state.shared_state_guard import raise_if_shared_state_error
 from config.providers import LLMProvider
 
 NO_EXTERNAL_KNOWLEDGE_TEXT = "无外部知识。"
@@ -159,32 +161,31 @@ class LLMRunner:
     def _call_llm_node(self, state: LLMGraphState) -> dict[str, object]:
         started_at = now_perf()
         graph_input = self._state_input(state)
-
-        fact = graph_input.grounded_fact if graph_input.retrieved_context and not graph_input.internal_context.strip() else None
+        fact = (graph_input.grounded_fact
+                if graph_input.retrieved_context and not graph_input.internal_context.strip()
+                else None)
+        settings = self.llm_service.settings
+        mock = (getattr(settings, "enable_mock_llm", False) is True
+                or getattr(settings, "llm_provider", "") == LLMProvider.MOCK)
         if fact is not None:
             raw_reply_text = fact.answer
+            inference, answer_mode = "skipped_extractive", "extractive_rag_fact"
         else:
             raw_reply_text = self.llm_service.invoke_messages(
-                messages=state["prompt_messages"],
-                fallback_text=graph_input.user_text,
-                mode="chat",
-                persona_name=graph_input.persona_alias or graph_input.persona_name,
+                messages=state["prompt_messages"], fallback_text=graph_input.user_text,
+                mode="chat", persona_name=graph_input.persona_alias or graph_input.persona_name,
             )
-
+            if not isinstance(raw_reply_text, str) or not raw_reply_text.strip():
+                raise GenerationUnavailableError()
+            inference, answer_mode = ("mock", "mock") if mock else ("model", "model")
         metadata = mark_stage_done(
-            dict(state.get("metadata", {})),
-            "llm_inference",
-            started_at,
-            llm_inference="skipped_extractive" if fact is not None else "model",
-            llm_answer_mode="extractive_rag_fact" if fact is not None else "model",
+            dict(state.get("metadata", {})), "llm_inference", started_at,
+            llm_inference=inference, llm_answer_mode=answer_mode,
             llm_fact_chunk_ids=",".join(fact.chunk_ids) if fact is not None else "",
+            llm_mock="true" if mock and fact is None else "false",
         )
-
-        return {
-            "messages": [AIMessage(content=raw_reply_text)],
-            "raw_reply_text": raw_reply_text,
-            "metadata": metadata,
-        }
+        return {"messages": [AIMessage(content=raw_reply_text)],
+                "raw_reply_text": raw_reply_text, "metadata": metadata}
 
     def _normalize_reply_node(self, state: LLMGraphState) -> dict[str, object]:
         started_at = now_perf()
@@ -273,13 +274,15 @@ class LLMRunner:
             long_term_memory_context=long_term_memory_context or NO_LONG_TERM_MEMORY_TEXT,
         )
 
-        result = self.graph.invoke(
-            {
-                "input": graph_input.model_dump(mode="json"),    # type: ignore
-                "messages": [HumanMessage(content=user_text)],
-            },
-            config={"configurable": {"thread_id": thread_id}},
-        )
+        try:
+            result = self.graph.invoke(
+                {"input": graph_input.model_dump(mode="json"), # type: ignore
+                 "messages": [HumanMessage(content=user_text)]},
+                config={"configurable": {"thread_id": thread_id}},
+            )
+        except Exception as exc:
+            raise_if_shared_state_error(exc)
+            raise GenerationUnavailableError() from None
         metadata = mark_stage_done(
             dict(result.get("metadata", {})),
             "llm_graph",

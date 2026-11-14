@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import Field, model_validator
 
-from aiagent.evaluation.contracts import Check, StrictModel, check_value
+from aiagent.evaluation.contracts import Check, StrictModel, check_value, read_json
 
 
 class EvaluationHTTPError(Exception):
@@ -131,6 +131,29 @@ def require_isolated() -> str:
         raise ValueError("API base must be an origin without credentials or path")
     return base.rstrip("/")
 
+
+def evaluation_headers(user: str) -> dict[str, str]:
+    """Bind credentials to the exact disposable principal, never to a self-reported user."""
+    import re
+
+    registry = os.environ.get("EVAL_API_USER_TOKENS_FILE", "")
+    token = os.environ.get("EVAL_API_TOKEN", "")
+    if registry:
+        if token:
+            raise ValueError("ambiguous evaluation credentials")
+        try:
+            mapping = read_json(Path(registry))
+            token = mapping.get(user) if isinstance(mapping, dict) else None
+        except (OSError, ValueError):
+            raise ValueError("evaluation credential registry invalid") from None
+        if not isinstance(token, str) or not token:
+            raise ValueError("evaluation principal credentials missing")
+    elif token and os.environ.get("EVAL_API_PRINCIPAL") != user:
+        raise ValueError("evaluation token principal mismatch")
+    if token and not re.fullmatch(r"[A-Za-z0-9_-]{43,256}", token):
+        raise ValueError("evaluation token invalid")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
 async def run_steps(raw_steps: list[dict], cleanup: list[dict], root: Path, user: str) -> list[dict]:
     import re
 
@@ -171,9 +194,7 @@ async def run_steps(raw_steps: list[dict], cleanup: list[dict], root: Path, user
             captures[name] = value
         return row
 
-    headers = {}
-    if os.environ.get("EVAL_API_TOKEN"):
-        headers["Authorization"] = f"Bearer {os.environ['EVAL_API_TOKEN']}"
+    headers = evaluation_headers(user)
     async with httpx.AsyncClient(base_url=base, headers=headers, trust_env=False,
                                  follow_redirects=False, timeout=60.0) as client:
         try:

@@ -6,7 +6,10 @@ from typing import Any
 from fastapi import APIRouter, File, Form, UploadFile
 from starlette.responses import JSONResponse
 
-from apps.api.response_utils import error_response, ok_response
+from aiagent.services.generation_errors import GenerationUnavailableError
+from aiagent.vision.gif_frames import ImageInputError
+from apps.api.response_utils import error_message_response, error_response, ok_response
+from apps.api.routes.vision import _validate_upload
 from apps.api.shared_state_errors import shared_state_error_response
 from apps.core.runtime_registry import get_runtime, get_runtime_error
 from cloud.config import cloud_settings
@@ -26,6 +29,10 @@ async def multimodal_chat(
     text: str = Form(default=""),
     session_id: str = Form(default=""),
 ):
+    if file is not None:
+        upload_error = _validate_upload(file)
+        if upload_error:
+            return error_message_response(stage="vision_upload", error=upload_error, status_code=400)
     try:
         runtime = get_runtime()
     except Exception as exc:
@@ -88,6 +95,12 @@ async def multimodal_chat(
             metadata = packet.metadata,
         )
 
+    except ImageInputError:
+        return error_message_response(
+            stage="vision_upload", error="invalid_or_unsupported_image", status_code=400,
+        )
+    except GenerationUnavailableError as exc:
+        return error_response(stage="llm_generation", exc=exc, status_code=503)
     except CloudTimeoutError as exc:
         logger.warning("Multimodal chat timed out: %s", exc)
         return JSONResponse(

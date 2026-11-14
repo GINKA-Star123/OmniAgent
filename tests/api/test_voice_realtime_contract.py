@@ -189,7 +189,7 @@ def test_voice_realtime_interrupt_active_call_contract(api_client, test_user):
 
     assert "result" in data
     assert data["result"]["status"] == "interrupted"
-    assert data["result"]["reason"] == "unit_interrupt"
+    assert data["result"]["scope"] == "owned_call"
 
     assert_voice_realtime_metadata_contract(
         data["metadata"],

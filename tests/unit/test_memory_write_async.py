@@ -11,7 +11,11 @@ def test_dispatcher_runs_task_and_swallows_failure():
     dispatcher = MemoryWriteDispatcher(max_workers=1, max_pending=4)
     seen: list[str] = []
 
-    queued = dispatcher.submit(lambda **kwargs: seen.append(kwargs["name"]), name="first")
+    def store_name(**kwargs):
+        seen.append(kwargs["name"])
+        return {"ok": True, "status": "stored"}
+
+    queued = dispatcher.submit(store_name, name="first")
     assert queued["status"] == "queued"
     assert dispatcher.drain(timeout=5.0) is True
     assert seen == ["first"]
@@ -21,7 +25,8 @@ def test_dispatcher_runs_task_and_swallows_failure():
     assert dispatcher.drain(timeout=5.0) is True
     last = dispatcher.status()["last"]
     assert last["status"] == "failed"
-    assert "boom" in last["error"]
+    assert last["reason"] == "memory_write_failed"
+    assert "boom" not in str(last)
     dispatcher.shutdown(wait=True)
 
 

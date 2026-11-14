@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -26,6 +27,7 @@ from aiagent.schemas.inputs import InputAttachment, InputEvent
 from aiagent.schemas.outputs import EmotionLabel, ResponsePacket
 from aiagent.schemas.safety import RequestRiskAssessment
 from aiagent.state.shared_state_guard import raise_if_shared_state_error
+from aiagent.vision.gif_frames import ImageInputError
 
 NO_LONG_TERM_MEMORY_TEXT = "无长期记忆。"
 STAGE_PREPARE = "prepare_context"
@@ -330,6 +332,8 @@ class MainRunner:
             }
 
         if self.vision_runner is None:
+            if Path(image_attachment.path).suffix.lower() == ".gif":
+                raise RuntimeError("gif_vision_unavailable")
             metadata = mark_stage_skipped(
                 metadata,
                 STAGE_VISION,
@@ -347,6 +351,11 @@ class MainRunner:
             )
         except Exception as exc:
             raise_if_shared_state_error(exc)
+            if (
+                isinstance(exc, ImageInputError)
+                or Path(image_attachment.path).suffix.lower() == ".gif"
+            ):
+                raise
             metadata = mark_stage_failed(
                 metadata,
                 STAGE_VISION,

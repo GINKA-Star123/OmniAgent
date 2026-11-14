@@ -11,6 +11,7 @@ from aiagent.schemas.inputs import InputEvent
 from aiagent.schemas.outputs import OutputEvent
 from aiagent.state.agent_state import AgentRuntimeState
 from aiagent.state.conversation_state import ConversationState
+from aiagent.state.private_resources import register_output_resources
 from aiagent.state.redis_state_store import RedisStateStore
 
 
@@ -42,7 +43,9 @@ class EventDispatcher:
         self.shared_state_store = shared_state_store
 
     def _handle_input_unlocked(self, event: InputEvent) -> OutputEvent:
-        session_id = self.session_manager.resolve_session_id(event)
+        session_id = event.session_id
+        if not session_id:
+            raise ValueError("resolved_session_required")
         turn_id = self.session_manager.resolve_turn_id(event,session_id=session_id)
 
         event.session_id = session_id
@@ -87,6 +90,7 @@ class EventDispatcher:
         output = OutputEvent(packet=packet)
 
         output = self.output_broadcaster.broadcast(output)
+        output = register_output_resources(output, user_id=event.user_id)
 
         self.agent_state.last_output_id = output.output_id
         self.conversation_state.add_output(output)

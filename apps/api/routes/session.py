@@ -19,8 +19,8 @@ async def session_open(req: SessionOpenRequest):
     try:
         result = await presence_service.open_session(req)
         return ok_response(**result.model_dump(mode="json"))
-    except Exception as exc:
-        logger.exception("/session/open failed: %s", exc)
+    except Exception:
+        logger.exception("/session/open failed")
 
         fallback_text = "你来了。我刚刚在待机，现在可以开始。"
 
@@ -62,6 +62,6 @@ async def session_open(req: SessionOpenRequest):
             },
             metadata={
                 "session_open": "degraded",
-                "session_open_error": str(exc),
+                "session_open_error": "session_open_failed",
             },
         )

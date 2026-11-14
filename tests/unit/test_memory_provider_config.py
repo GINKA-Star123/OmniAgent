@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from aiagent.memory import mem0_memory
@@ -30,7 +32,7 @@ def test_memory_keeps_llm_and_embedding_endpoints_separate(monkeypatch, tmp_path
         encoding="utf-8",
     )
     captured = {}
-    sentinel = object()
+    sentinel = SimpleNamespace(add=lambda messages, *, infer=True: None)
 
     def fake_from_config(config):
         captured.update(config)

@@ -54,7 +54,7 @@ def test_old_diagnostic_payload_remains_readable():
     assert diagnostic.reasoning_tokens is None
 
 
-@pytest.mark.parametrize("mode", ["default", "disabled"])
+@pytest.mark.parametrize("mode", ["default", "disabled", "enabled"])
 def test_deepseek_thinking_is_explicit_and_request_bound(monkeypatch, mode):
     import openai
 
@@ -85,8 +85,8 @@ def test_deepseek_thinking_is_explicit_and_request_bound(monkeypatch, mode):
     assert judge.identity["thinking_mode"] == mode
     assert captured["client"]["max_retries"] == 0
     assert captured["request"]["max_tokens"] == 1024
-    if mode == "disabled":
-        assert captured["request"]["extra_body"] == {"thinking": {"type": "disabled"}}
+    if mode != "default":
+        assert captured["request"]["extra_body"] == {"thinking": {"type": mode}}
     else:
         assert "extra_body" not in captured["request"]
 
@@ -94,10 +94,11 @@ def test_deepseek_thinking_is_explicit_and_request_bound(monkeypatch, mode):
 @pytest.mark.parametrize("endpoint", ["", "https://api.openai.com/v1", "http://api.deepseek.com",
                                       "https://api.deepseek.com.attacker.invalid/v1",
                                       "https://user:secret@api.deepseek.com/v1"])
-def test_vendor_extension_is_not_sent_to_other_or_unsafe_endpoints(monkeypatch, endpoint):
+@pytest.mark.parametrize("thinking_mode", ["disabled", "enabled"])
+def test_vendor_extension_is_not_sent_to_other_or_unsafe_endpoints(monkeypatch, endpoint, thinking_mode):
     monkeypatch.setenv("EVAL_JUDGE_BASE_URL", endpoint)
     with pytest.raises(JudgeError, match="thinking_mode_unsupported_endpoint"):
-        Judge("provider", thinking_mode="disabled")
+        Judge("provider", thinking_mode=thinking_mode)
 
 
 @pytest.mark.parametrize("mode", ["none", "manual"])

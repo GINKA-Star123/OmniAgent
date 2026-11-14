@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     app_env: str = APP_ENV
     log_level: str = LOG_LEVEL
 
+    api_auth_mode: str = Field(default="bearer", alias="API_AUTH_MODE")
+    api_local_principal: str = Field(default="local-user", alias="API_LOCAL_PRINCIPAL")
+    api_auth_token_sha256_map: str = Field(
+        default="{}", alias="API_AUTH_TOKEN_SHA256_MAP", repr=False, exclude=True,
+    )
+
     llm_provider: str = LLM_PROVIDER
     llm_model: str = LLM_MODEL
     enable_mock_llm: bool = ENABLE_MOCK_LLM

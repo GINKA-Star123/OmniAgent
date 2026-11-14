@@ -441,11 +441,10 @@ async def voice_realtime_interrupt(req: VoiceRealtimeInterruptRequest):
         )
 
     try:
-        runtime = get_runtime()
-        result = await asyncio.to_thread(
-            runtime.interrupt_speaking,
-            interrupt_reason,
-        )
+        # 用户面仅改变已验证 owner 的通话，不操作全局录音/播放设备。
+        # 本机硬件打断留给 admin 的 /voice/interrupt 或 /control/interrupt。
+        result = {"status": "interrupted", "scope": "owned_call"}
+
     except Exception as exc:
         shared_error = shared_state_error_response(exc)
         if shared_error is not None:

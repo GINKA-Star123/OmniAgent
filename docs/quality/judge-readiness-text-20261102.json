@@ -1,0 +1,15 @@
+{
+  "version": "judge-adjudication-calibration-v1",
+  "status": "agent_labeled_development_contrasts_not_human_accepted",
+  "note": "8条独立固定开发对照，不属于heldout，不覆盖旧参照；只检验复合声明真值与完整目标覆盖，不能替代全部校准或发布审批。",
+  "cases": [
+    {"id": "modifier-cup-specific", "answer": "桌上有一个红色金属杯子。", "gold": "桌上有杯子。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "modifier-cup-general", "answer": "桌上有杯子。", "gold": "桌上有一个红色金属杯子。", "relation": "partial", "truth": "correct"},
+    {"id": "modifier-car-specific", "answer": "照片里有一辆白色四门汽车。", "gold": "照片里有汽车。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "modifier-car-general", "answer": "照片里有汽车。", "gold": "照片里有一辆白色四门汽车。", "relation": "partial", "truth": "correct"},
+    {"id": "coverage-conjunction", "answer": "背景可见运河、树木和房屋。", "gold": "背景有树木。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "coverage-location", "answer": "门旁桌子上有一盘水果。", "gold": "窗边桌子上有一盘水果。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "coverage-unrelated-attribute", "answer": "这幅海报以蓝色为主。", "gold": "这幅海报为竖向构图。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "coverage-explicit-negation", "answer": "桌上没有杯子。", "gold": "桌上有杯子。", "relation": "contradicted", "truth": "incorrect"}
+  ]
+}

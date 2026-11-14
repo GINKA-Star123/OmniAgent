@@ -558,6 +558,8 @@ V1.1 新增两个只读检查：
 | `EVAL_BASE_URL` | 留空 | 被测隔离 API 的 Origin，例如 `http://127.0.0.1:18080`；只允许 HTTP/HTTPS，不带用户名、密码、路径、查询参数或 fragment。禁止指向生产服务 |
 | `EVAL_ISOLATED` | `0` | 隔离评测显式确认开关；必须设为 `1` 才能通过 API/负载评测入口的隔离检查。开关本身不会创建隔离环境，仍需独立服务、数据与工作区 |
 | `EVAL_API_TOKEN` | 留空 | 评测 HTTP 客户端使用的 Bearer token；仅在被测隔离环境要求认证时填写，不等同于管理接口的 `CLOUD_ADMIN_TOKEN`，不得提交或记录明文 |
+| `EVAL_API_PRINCIPAL` | 留空 | 单主体评测 Token 绑定的确切 `eval-*` 主体；必须与本次请求用户一致 |
+| `EVAL_API_USER_TOKENS_FILE` | 留空 | 当前评测器实际使用的多主体凭证 JSON 文件路径：确切主体到 Token；文件不入库，不与单主体 Token 混用 |
 | `EVAL_SUT_IDENTITY` | 留空；未设置时报告使用 `local-offline` | 被测部署身份，用于记录与比较报告。访问真实部署或 runtime graph 前必须显式填写实际隔离实例标识，不能用离线默认值代替 |
 | `EVAL_CORPUS_SHA256` | 留空；未设置时报告使用 `not_applicable` | 被测语料 manifest 的实际 SHA256，必须与本轮评测输入对应；真实 API RAG 评测要求显式填写，不能编造或复用不匹配语料的指纹 |
 | `EVAL_JUDGE_BASE_URL` | 留空 | OpenAI-compatible Judge 服务地址，按服务要求包含 `/v1` 等路径；未填写时由 SDK 解析默认端点，正式评测应显式指定并与被测服务区分 |
@@ -689,3 +691,25 @@ Copy-Item cloud.tencent.example.env cloud.tencent.env
 | `EXECUTION_STATE_SESSION_TTL_SECONDS` | `86400` | 会话级共享状态保留时间 |
 | `EXECUTION_STATE_THREAD_TTL_SECONDS` | `1800` | Thread 级共享状态保留时间 |
 | `EXECUTION_STATE_LOCK_TTL_SECONDS` | `60` | 分布式状态锁的最大持有时间 |
+
+### V1.2 用户认证与私有资源
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `API_AUTH_MODE` | bearer | bearer 或 local-dev；生产/cloud 禁止 local-dev |
+| `API_LOCAL_PRINCIPAL` | local-user | 仅显式本地开发模式使用的固定主体 |
+| `API_AUTH_TOKEN_SHA256_MAP` | {} | 高熵 Bearer Token 的 SHA-256 到稳定主体的 JSON 映射；空映射不能启动 bearer 服务 |
+| `MEMORY_ENABLE_GRAPH` | false | 第五批仅验证无推断向量写入；图模式暂不可用 |
+| `MEM0_TELEMETRY` | false（模板） | Mem0 SDK 读取的真实进程环境变量；必须在首次导入 SDK 前导出，单独让 Settings 读取 `.env` 不代表已生效 |
+| `ENABLE_LOCAL_AUDIO_PLAYBACK` | false | Bearer 多用户 HTTP 服务禁止共享本机播放 |
+
+用户必须用 Authorization: Bearer <token> 认证。JSON/Form/path 中的 user_id 必须等于认证主体，X-User-ID 不具有授权效力。
+本地与云端共用根目录 .env；EXECUTION_STATE_MODE=redis 时使用 REDIS_URL 指定的 Redis，断开不回退内存。
+本地内存资源索引不跨进程、不跨重启。生产使用 Redis 和共享私有音频存储卷；多 Worker 的 voice call store 也必须配置 Redis。
+/cloud-files 与共享任务、知识管理、全局控制均为 admin；/audio 需要资源 owner。旧未登记音频不自动认领。
+
+Mem0 遥测与历史的限制：本地启动前设置 `$env:MEM0_TELEMETRY = 'false'`；
+容器通过 `env_file`/`environment` 给 API 和 Worker 分别注入，并重建进程。
+这不会关闭 embedding Provider 调用，也不会删除 SDK 的历史 SQLite、实体或备份副本。
+`mem0.memory.main` 日志过滤器只抑制已确认 logger 的记录，不是全链路隐私隔离。
+第五批的异步记忆写入仅把批准载荷的提交放到后台，检索、策略判断与审核仍在请求内进行，不能按旧版描述理解为全部脱离回复耗时。

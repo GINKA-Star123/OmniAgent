@@ -280,6 +280,19 @@ schema 校验提示:
 9. 不要推断真实人物身份。
 """.strip()
 
+        if result.format == "GIF":
+            gif_meta = result.metadata
+            chat_context += (
+                "\n\n[GIF 抽样边界]\n"
+                f"原始帧数: {gif_meta.get('vision_gif_frame_count', 0)}\n"
+                f"计划抽样帧号: {gif_meta.get('vision_gif_sample_indices', [])}\n"
+                f"实际发送帧数: {gif_meta.get('vision_gif_sent_frame_count', 0)}\n"
+                f"推理模式: {gif_meta.get('vision_animation_inference', 'unknown')}\n"
+                "仅描述抽样可见变化，不补全未抽到的动作或文字；"
+                "Mock 没有真实动图理解，不能据此声称看到了动作。"
+                "GIF 内容不作为长期记忆候选。"
+            )
+
         metadata = dict(state.get("metadata", {}))
         metadata.update(
             {
@@ -297,7 +310,16 @@ schema 校验提示:
 
         return {
             "chat_context": chat_context,
-            "metadata": metadata,
+            "metadata": {
+                **metadata,
+                **{
+                    key: value for key, value in result.metadata.items()
+                    if key.startswith("vision_gif_") or key in {
+                        "vision_media_kind", "vision_animation_inference",
+                        "vision_character_retrieval_scope",
+                    }
+                },
+            },
         }
 
     def _build_memory_hint_node(self, state: VisionGraphState) -> VisionGraphState:

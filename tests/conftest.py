@@ -28,6 +28,11 @@ def _configure_test_temp_dir() -> None:
 def _force_mock_env() -> None:
     mock_env = {
         "APP_ENV": "test",
+        "API_AUTH_MODE": "local-dev",
+        "API_LOCAL_PRINCIPAL": "test-user",
+        "API_AUTH_TOKEN_SHA256_MAP": "{}",
+        "CLOUD_ADMIN_TOKEN": "",
+        "MEM0_TELEMETRY": "false",
         "LOG_LEVEL": "WARNING",
         "LLM_PROVIDER": "mock",
         "LLM_MODEL": "mock",
@@ -71,7 +76,9 @@ def _force_mock_env() -> None:
 
 
 def _safe_tmp_name(node_name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", node_name).strip("_") or "test"
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", node_name).strip("_.") or "test"
+    # Leave room for the UUID and nested files on Windows, even with long parameter IDs.
+    return safe_name[:64].rstrip(".")
 
 
 _configure_test_temp_dir()
@@ -144,6 +151,34 @@ def test_user() -> dict[str, str]:
         "user_id": "test-user",
         "username": "测试用户",
     }
+
+
+@pytest.fixture()
+def auth_headers(monkeypatch):
+    import hashlib
+    import json
+
+    from apps.api import user_auth
+
+    mapping = {}
+    monkeypatch.setattr(user_auth.settings, "api_auth_mode", "bearer")
+    monkeypatch.setattr(user_auth.settings, "enable_local_audio_playback", False)
+
+    def issue(user_id: str):
+        token = hashlib.sha512(f"batch05-test:{user_id}".encode()).hexdigest()
+        mapping[hashlib.sha256(token.encode()).hexdigest()] = user_id
+        monkeypatch.setattr(user_auth.settings, "api_auth_token_sha256_map", json.dumps(mapping))
+        return {"Authorization": f"Bearer {token}"}
+
+    issue("test-user")
+    return issue
+
+
+@pytest.fixture()
+def admin_headers(monkeypatch):
+    token = "synthetic-admin-for-tests-only"
+    monkeypatch.setenv("CLOUD_ADMIN_TOKEN", token)
+    return {"X-Cloud-Admin-Token": token}
 
 
 @pytest.fixture()

@@ -1,0 +1,23 @@
+{
+  "version": "judge-adjudication-calibration-v1",
+  "status": "agent_labeled_development_contrasts_not_human_accepted",
+  "note": "独立开发对照参照，不覆盖旧24例，不属于heldout。验证逻辑规则迁移；标签未经人工验收，不能证明泛化性能。",
+  "cases": [
+    {"id": "dominant-not-exclusive", "answer": "背包以蓝色为主。", "gold": "背包有蓝色和白色两种颜色。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "mixed-not-equal", "answer": "帆布上有绿色和金色。", "gold": "帆布以绿色为主。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "person-without-framing", "answer": "图中有一个人。", "gold": "图中人物以腰部以上近景呈现。", "relation": "partial", "truth": "correct"},
+    {"id": "poster-without-orientation", "answer": "这是一幅海报。", "gold": "海报为横向布局。", "relation": "partial", "truth": "correct"},
+    {"id": "unrelated-objects-coexist", "answer": "地板上有足球。", "gold": "墙上挂有挂钟。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "plants-without-bloom", "answer": "门边摆着盆栽绿植。", "gold": "门边有黄色花朵。", "relation": "partial", "truth": "unverifiable"},
+    {"id": "place-without-detail", "answer": "箱子在走廊中。", "gold": "箱子在走廊尽头的窗边。", "relation": "partial", "truth": "correct"},
+    {"id": "place-explicit-conflict", "answer": "箱子只在门外，不在房间内。", "gold": "箱子在房间内。", "relation": "contradicted", "truth": "incorrect"},
+    {"id": "stronger-chair-detail", "answer": "椅子有四条腿。", "gold": "有椅子。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "weaker-chair-detail", "answer": "有椅子。", "gold": "椅子有四条腿。", "relation": "partial", "truth": "correct"},
+    {"id": "negation-scope-preserved", "answer": "屋里没有沙发、电视或地毯。", "gold": "屋里没有电视。", "relation": "entailed", "truth": "unverifiable", "valid_quote": "屋里没有沙发、电视或地毯", "invalid_quote": "没有电视"},
+    {"id": "exclusive-color-conflict", "answer": "鞋子通体蓝色，没有红色。", "gold": "鞋子通体红色。", "relation": "contradicted", "truth": "incorrect"},
+    {"id": "vehicle-without-subtype", "answer": "有一辆车。", "gold": "有一辆自行车。", "relation": "partial", "truth": "correct"},
+    {"id": "subtype-entails-vehicle", "answer": "桥上有一辆自行车。", "gold": "桥上有车辆。", "relation": "entailed", "truth": "unverifiable"},
+    {"id": "appearance-not-identity", "answer": "人物有黑色头发。", "gold": "人物身份为甲。", "relation": "not_addressed", "truth": "unverifiable"},
+    {"id": "accessory-not-action", "answer": "人物戴着手套。", "gold": "人物正在弹奏乐器。", "relation": "not_addressed", "truth": "unverifiable"}
+  ]
+}

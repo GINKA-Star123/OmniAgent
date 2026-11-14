@@ -26,8 +26,8 @@ def test_ready_contract(api_client):
     assert isinstance(data["checks"], dict)
 
 
-def test_runtime_diagnostics_contract(api_client):
-    response = api_client.get("/runtime/diagnostics")
+def test_runtime_diagnostics_contract(api_client, admin_headers):
+    response = api_client.get("/runtime/diagnostics", headers=admin_headers)
     data = assert_json_response(response)
 
     assert "ok" in data
@@ -38,8 +38,8 @@ def test_runtime_diagnostics_contract(api_client):
     assert isinstance(data["summary"], dict)
 
 
-def test_runtime_capabilities_contract(api_client):
-    response = api_client.get("/runtime/capabilities")
+def test_runtime_capabilities_contract(api_client, admin_headers):
+    response = api_client.get("/runtime/capabilities", headers=admin_headers)
     data = assert_json_response(response)
 
     assert_ok_response(data)

@@ -1,12 +1,12 @@
 # AIagent 评测总流程：从离线到真实验收
 
-更新日期：2026-10-28。本文是 WSL 评测的唯一操作入口，覆盖 RAG、Memory、Vision、Persona；不推进 V1.2 第五批，不包含前端。Windows 命令变体见 [Windows 手册](project-evaluation-windows-runbook.md)。
+更新日期：2026-11-02。本文是 WSL 评测的唯一操作入口，覆盖 RAG、Memory、Vision、Persona；不推进 V1.2 第五批，不包含前端。Windows 命令变体见 [Windows 手册](project-evaluation-windows-runbook.md)。
 
 命令逐项执行并审阅报告，不整篇当一键脚本。首次评测依次阅读第 1～11 步；已有环境只做尚未完成的步骤。原理见[实现说明](project-evaluation-implementation.md)，历次结果与原始报告位置见[历史记录](evaluation-history.md)。
 
 ## 0. 先确认当前位置
 
-执行前先读[现状入口](README.md)和[标注与口径审定](evaluation-adjudication-20261028.md)。当前停止点是用户审阅候选及评审口径；批准校准前，不因本文列有命令就重跑付费回归。最近完整回归与定向验证分开记录，见[历史记录](evaluation-history.md#judge-v6-regression-复跑)。heldout留给用户最终验收。
+执行前先读[现状入口](README.md)和[标注与口径审定](evaluation-adjudication-20261028.md)。用户已允许候选独立诊断，但未批准发布基线；2026-11-02最新8次小图放大对照仍未改善，两种倍数各1/4；此前视觉原图4/4、小图2/4，位置实验3/4，也只是有限子集，不是完整校准通过。用户选择自动Judge校准通过后再冻结，不接受人工兜底替代；不因本文列有命令就重复付费回归。最近完整回归与定向验证分开记录，见[历史记录](evaluation-history.md#judge-v6-regression-复跑)。heldout留给用户最终验收，当前第9节尚不可执行。
 
 总路线：环境/数据 → 离线验证 → 模型与 Judge → Provider smoke → 隔离 API → 业务 smoke → 回归/对照 → 冻结 → heldout → 负载 → 归档。系统层由独立 load/telemetry 工具完成，Dataset 的 layer 只有 component、trajectory、task。
 
@@ -205,7 +205,65 @@ export APP_ENV=local CLOUD_MODE=false
 
 Judge 最好与被测模型不同，并记录实际版本。当前 Judge v8 自动读取 r3 旁的 `judge-gold-kinds.json`；该文件将 Persona 行为目标与事实目标分开，不能为了通过率随意改标注。普通模式要求覆盖绑定正确 claim；显式 `--judge-verify-visual-gold` 将图像支持度与文字 gold 分通道，使用独立覆盖评定，详见[协议](project-evaluation-implementation.md#judge-protocol)。Persona 默认仍只评末轮事实，跨轮范围需显式 overrides。完整回归仍为 v6，v7/v8 只是失败定向验证，使用同模型，结构合法不保证语义正确；不要混作同条件全量基线。下方 smoke 是新实验的命令示例，不能用来重复已完成运行。
 
-复现 2026-10-28 本轮条件时，Judge 为 `https://api.deepseek.com` 的 `deepseek-flash`，所有带 `--judge provider` 的命令还需加 `--judge-thinking disabled --judge-max-output-tokens 4096`，包括后续由用户执行的 heldout。前者只支持官方 HTTPS DeepSeek 端点，换到其他 Judge 时不能照搬；默认 thinking 与显式 disabled 是不同评审条件，不混作同条件基线。
+复现 2026-10-28 历史条件时，Judge 为 `https://api.deepseek.com` 的 `deepseek-flash`，所有带 `--judge provider` 的命令还需加 `--judge-thinking disabled --judge-max-output-tokens 4096`。这不是当前 heldout 的执行建议：评审条件尚待冻结，heldout 由用户最终验收。显式 disabled/enabled 只支持官方 HTTPS DeepSeek 端点，换到其他 Judge 时不能照搬；default/disabled/enabled 是不同评审条件，不混作同条件基线。
+
+### 3.4 固定声明的 Judge 诊断
+
+入口为 `python -m scripts.calibrate_evaluation_judge`，不是业务 Dataset CLI，不启动 API 或执行被测模型。它不包含图片/行为评审。当前用户选择继续使用同模型 Judge；同模型偏差仍须在结论中披露。
+
+**2026-11-03停止点**：新授权50次已全部用于同模型thinking enabled的固定参照诊断，剩余0次。视觉5/8、较广文字23/24，仍未校准通过；开发文字8/8、位置4/4、Persona6/6不能替代完整通过。不要重跑下方付费示例、一次性campaign脚本或业务Provider命令，也不要运行第9节heldout。新增付费执行需要有新实验依据和新的预算授权；[本轮台账](evaluation-history.md#同模型思考模式50次固定参照诊断2026-11-03)保留所有失败，默认配置未变。
+
+仅检查参照和输入结构，不请求模型：
+
+```bash
+python -m scripts.calibrate_evaluation_judge --gold-policy bidirectional
+```
+
+真实调用仅在代码、评审条件实际变化且需要新实验时运行，**不要为了获得绿色结果重复已完成实验**。已有 Judge 变量直接复用；需显式沿用被测端点时，在私有 profile 已加载的当前 shell 中设置：
+
+```bash
+export EVAL_JUDGE_BASE_URL="$OPENAI_BASE_URL"
+export EVAL_JUDGE_MODEL="$LLM_MODEL"
+export EVAL_JUDGE_API_KEY="$OPENAI_API_KEY"
+export APP_ENV=local CLOUD_MODE=false
+
+python -m scripts.calibrate_evaluation_judge \
+  --gold-policy bidirectional --execute --allow-provider \
+  --judge-thinking disabled --debug-local \
+  --output "$REPORTS/judge-calibration-bidirectional"
+```
+
+上述 thinking 设置只适用于当前官方 DeepSeek 端点。默认 `current` 是原文字 gold 提示词，每例最多 1 请求；`compact` 是未通过验证的短提示词实验；`bidirectional` 每例最多 2 请求，24 例预算为 48。新增 `derived` 每例1请求，复用当前真实紧凑gold提示词；输出预算通过 `--judge-max-output-tokens` 显式指定，默认4096、最多8192。所有模式固定 `max_repairs=0`、SDK 不重试；请求/鉴权异常中止后续请求并记录未运行项，语义不匹配不重试。
+
+`--case-id` 可重复指定固定参照的精确 ID，子集摘要与完整来源摘要分别记录；子集通过不是整轮通过。报告中的 `all_references_matched` 仅表示所选代理标注文字参照完全匹配，`baseline_eligible` 和 `human_accepted` 始终为 false。双向模式的后补一致性检测也不改变历史报告；当前完整实测 20/24，仍不是校准通过。
+
+`.judge-debug` 仅在显式本地模式保存脱敏原文，禁止提交。脚本提示词实验不会修改业务 `Judge` 默认值；不要把一次校准请求当成 SUT 自由回答、图片判断或 19 例业务执行。
+
+### 3.5 图片与 Persona 固定通道诊断
+
+先完成 3.3 节 Judge 变量配置，继续沿用当前模型，无需更换供应商。以下仅检查结构和摘要，不发请求：
+
+```bash
+python -m scripts.calibrate_evaluation_channels --suite persona
+python -m scripts.calibrate_evaluation_channels --suite visual
+python -m scripts.calibrate_evaluation_judge \
+  --references docs/quality/judge-boundary-calibration-20261101.json \
+  --gold-policy bidirectional
+```
+
+当前候选 manifest 须保持未接受状态；36 条图片、6 条 Persona 固定参照只用于校准。16 条文字开发对照不是 heldout，也不是人工验收标签。**11-01 已完成的实验见历史记录，不要直接重跑以下模板来追求通过率。** 仅在审阅失败、变更条件并决定新实验后，选择明确参照 ID：
+
+```bash
+# 示例：只运行一条固定 Persona 参照，不调用 SUT；最多 1 次 Judge 请求。
+python -m scripts.calibrate_evaluation_channels \
+  --suite persona --case-id identity-denial --execute --allow-provider \
+  --judge-thinking enabled --judge-max-output-tokens 8192 --debug-local \
+  --output "$REPORTS/judge-persona-new-condition"
+```
+
+图片调用另外要求 `EVAL_JUDGE_VISION=1`，这个开关只是调用许可，不证明模型支持图片或识图可靠；不应在普通文字 shell 中无条件长期打开。`--case-id` 可重复指定，每条预算一请求，始终无修复。校准使用已审的固定回答，不运行被测 API。4096 token 的 Persona 截断及改为 8192 的复测必须分开记账，不能合并成绩；不要保存模型推理正文。
+
+校准初段Persona-17已1/1通过，随后在固定36次Judge预算内完成18条Vision候选独立诊断；结果和条件见[历史记录](evaluation-history.md#vision-候选独立诊断与覆盖绑定派生2026-11-01)。2026-11-02又获准4次保存回答gold诊断及12次固定参照校准，均已执行完，自动校准仍未通过；不能通过降低门槛或改gold掩盖误判。候选manifest不更新为人工接受，不执行`--release`、新全量业务regression或heldout。后续4条视觉参照独立留档，不补写原36条参照的运行状态或合并成绩。
 
 ## 4. 首次 Provider 验证：9 条 smoke
 
@@ -254,6 +312,57 @@ jq '[.results[] | select(.status != "passed") |
 | 指标为 null、样本为 0 或测试 skipped | 没有适用证据或未执行 | 不等于 0 分，也不等于通过 |
 
 `judge_diagnostics` 末次 `complete/ok` 只说明判词合法，不说明回答质量通过；有过一次协议修复但最终成功时，前面的错误仍保留。报告没有原答复时不能凭哈希恢复；只有显式 debug 的语义用例才有本地脱敏评审材料，不是完整业务追踪包。
+
+#### Vision 诊断的复核记录
+
+自动判词与人工复核分别保存，不能编辑 report.json、原 gold 或旧判词来替换成绩。本地复核记录至少绑定原 report 文件摘要、case key、observation_sha256、图片摘要，并逐项说明“业务回答错误 / Judge 协议异常 / Judge 语义误判 / 尚不能确定”。同时记录复核者类型（用户人工或代理）、原文引用与理由；代理复核不能自动变成人工接受。只对用户明确确认的具体图像与声明标记局部人工确认，不据此批准整组候选。
+
+启用 --debug-local 后，首次 Judge 请求前会保存 `.judge-debug/HASH_OF_CASE_KEY-input.json`，网络或协议失败仍可检查已生成回答，无需为找回回答重新调用 SUT。文件中的 `payload_sha256` 是转换前摘要，`stored_payload_sha256` 是脱敏/限长后摘要；`payload_transformed=true` 时尤其不能把它当作逐字原始输入。所有此类文件禁止自动回放、默认未人工接受，不直接用作 --manual 判词，也不上传或提交 Git。
+
+独立视觉通道现显式采用 `visual_quote_rule=contiguous-before-atomic-v1`：无法无损拆开共享主语或否定词时保留连续复合原文；其中任一事实错误仍不能判 visible。新旧视觉提示词摘要不同，分开分析；一次引用合法不代表像素判断已校准，不重复请求到通过。普通合并通道和评分门槛不随之放宽。
+
+后补的 `--judge-derive-gold-bindings` 仅是新协议的显式诊断开关，需同时指定 `--judge-verify-visual-gold --judge-max-repairs 0`，禁止--release。模型只输出真值和逐目标关系，程序派生冗余覆盖列表；严格引用、语义和身份校验不变。免费结构投影后已有真实固定回答及文字参照诊断，但自动语义仍未校准通过；本轮预算已用完，不将这个开关追加到旧命令直接重跑。下一次获准实验需单列固定回答、预算、提示词摘要和来源，不重新生成旧回答来制造改善。
+
+后续18例免费兼容审计及Windows/WSL离线regression已执行，见[兼容证据](evaluation-history.md#免费兼容审计与预算前置检查2026-11-01)。11份有效结果的最终合成指标不变不等于新协议通过真实模型验证；4份结构异常、2份引用错误和1份截断仍按原结果保留，未改旧报告或候选资格。2026-11-02的4次固定gold诊断结构4份合法但质量不计分，随后8条文字参照仅5/8，不能据此启动发布验收。
+
+当前停止点和12次请求结果见[最新记录](evaluation-history.md#固定回答诊断与12次校准2026-11-02)。复查命令可免费读取以下安全报告，不会调用模型；这些是已完成实验，不是继续付费执行的许可：
+
+```bash
+cd "$WORKSPACE"
+jq '{summary, usage, all_references_matched}' \
+  data/cache/reports/judge-readiness-text-20261102/20261102T091351Z-1351a7dd/report.json
+jq '{summary, usage, all_references_matched}' \
+  data/cache/reports/judge-readiness-visual-20261102/20261102T091529Z-c9fbe818/report.json
+```
+
+后续另获准的12次盲描述/独立双向诊断也已执行完：两图盲描述加4条文字核验6请求，3条文字参照双向判断6请求。红伞反例修正，但盲描述仍会错认衣饰为手/指甲；文字位置共存也仍失败，不能升级为完整校准通过。受限工具不接入正式评分，无剩余额度，不能直接加 `--execute` 重跑。仅查看报告：
+
+```bash
+jq '{summary, usage, quality_pass_rate}' \
+  data/cache/reports/judge-causal-diagnostic-20261102T093746Z/visual/20261102T093812Z-eed01dcc/report.json
+jq '{summary, usage, all_references_matched}' \
+  data/cache/reports/judge-causal-diagnostic-20261102T093746Z/text/20261102T093854Z-1dbedea4/report.json
+```
+
+当前仍先解决自动Judge可靠性，不以人工兜底、只跑已通过子集或把自动描述当真值绕过第9节的冻结条件。[因果诊断与边界](evaluation-history.md#盲描述与独立双向诊断2026-11-02)。
+
+之后用户确认素材，并将近景左下局部口径明确为衣服饰品、不是指甲；另授权的8次分辨率对照与4次位置实验均执行完。原图4/4、小图2/4，`derived-open-world`位置实验3/4，仍不足以升级默认评分或冻结验收。不能将small输入静默替换为normal，不能重跑已通过子集替代完整校准。该笔12次预算无剩余，仅查看安全报告：
+
+```bash
+jq '{summary, usage, all_references_matched}' \
+  data/cache/reports/judge-resolution-position-20261102T095304Z/visual/20261102T095315Z-8cbd5997/report.json
+jq '{summary, usage, all_references_matched}' \
+  data/cache/reports/judge-resolution-position-20261102T095304Z/text/20261102T095337Z-ca62c5d6/report.json
+```
+
+之后获准的8次小图2倍/4倍最近邻放大诊断也已执行完，结果各1/4，没有修复对象错认，不采用为正式预处理。原图像素未参与放大，生成PNG及变换清单独立保存，不能把输入变化掩盖成同条件通过。该笔额度已用完，不继续执行工具的付费入口；仅查看结果：
+
+```bash
+jq '{summary, usage, all_references_matched, identity}' \
+  data/cache/reports/judge-small-scale-20261102T100453Z/20261102T100510Z-5772f14a/report.json
+```
+
+2026-11-01 起新增 `repair_policy=freeze-first-decisions-v1`。`--judge-max-repairs 1` 只是上限，不保证所有格式错误都重试：首次不可解析/截断或目标、声明身份不可靠时直接保留异常；修复改变第一次的语义判断时返回 `validation/repair_semantics_changed`，不能当业务低分或通过。不要为绕过保护而增加 repeat、改标签或重新请求。新字段进入 conditions，不能与旧无保护报告直接比较；当前校准仍保持 `--judge-max-repairs 0`。具体冻结范围见[协议说明](project-evaluation-implementation.md#judge-protocol)。
 
 ### 核心指标统一口径
 
@@ -555,6 +664,8 @@ EVAL_RUN_LIVE=1 EVAL_VISION_DATASET="$DS/api-vision-reviewed-smoke.json" \
 
 下面是 regression，不是 heldout，不使用 repeat=3 作为默认首跑。未指定 Judge 预算时，CLI 按所选评审通道数 × repeat × (1+max_repairs) 计算：普通文本/单通道每例一个，显式视觉双通道每例两个；max_repairs=1时分别最多2/4次。预算不限制被测生成、embedding或服务内部调用费用。
 
+Provider语义评测会在生成当前回答前检查初始评审额度：双通道剩余不足2次、文本单通道不足1次时，返回budget/request_budget_exhausted，不调用observer。只为初始通道做准入检查，不要求预留可选修复；默认额度与检查共用计数规则，budget_policy=complete-initial-review-v1进入条件。不要把这一防护理解为SUT或整条链路的费用上限。
+
 例如先查看 Persona 这一项的规模：
 
 ```bash
@@ -637,9 +748,9 @@ python -m aiagent.evaluation.cli --dataset "$DS/offline-rag.json" --split regres
 
 ## 9. 冻结后再做 heldout 验收
 
-**此节仅供用户最终验收时执行，本轮代理不会运行。先处理 regression 中的标注待复核项，并记录接受的候选快照。**
+**此节当前不可执行，仅保留为冻结后由用户最终验收的模板。2026-11-02自动Judge校准仍失败，不因代码/协议测试通过解除此限制。**
 
-只有第 8 步方案冻结、来源与视觉标注审阅、费用确认后才执行。按分项逐条运行并检查，不用 heldout 反复挑提示词或参数：
+只有自动文字/视觉/Persona固定参照按事先约定的完整范围及门槛通过、同条件业务regression通过，第8步方案、数据/标注/模型/Judge/提示词/环境冻结并确认费用后才执行。不能在看到失败后缩减校准集，不能用人工兜底替代用户要求的自动校准通过。按分项逐条运行并检查，不用heldout反复挑提示词或参数：
 
 ```bash
 python -m aiagent.evaluation.cli --dataset "$DS/offline-all.json" --split heldout \

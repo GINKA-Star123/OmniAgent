@@ -20,6 +20,18 @@ class LocalJudgeDebug:
 
     def write(self, key: str, attempt: int, payload: dict, raw_verdict: str) -> None:
         value = {"payload_sha256": digest(payload), "payload": payload, "raw_verdict": raw_verdict}
+        self._write(f"{digest(key)[:24]}-{attempt}.json", value)
+
+    def write_input(self, key: str, payload: dict) -> None:
+        """Keep review material even when the first judge request fails."""
+        self._write(f"{digest(key)[:24]}-input.json", {
+            "artifact_type": "semantic-review-input-v1", "key_sha256": digest(key),
+            "payload_sha256": digest(payload), "payload": payload,
+            "human_accepted": False, "baseline_eligible": False,
+            "automatic_replay_allowed": False,
+        })
+
+    def _write(self, filename: str, value: dict) -> None:
         # Replace known credentials even when a model echoes a bare value without a label.
         secrets = sorted({v for k, v in os.environ.items() if v and is_sensitive_key(k)}, key=len, reverse=True)
         def replace_known(item):
@@ -34,7 +46,10 @@ class LocalJudgeDebug:
             return item
 
         cleaned = sanitize_log_value(replace_known(value), max_depth=12, max_items=100, max_text_length=32768)
-        path = self.directory / f"{digest(key)[:24]}-{attempt}.json"
+        if value.get("artifact_type") == "semantic-review-input-v1":
+            cleaned["stored_payload_sha256"] = digest(cleaned["payload"])
+            cleaned["payload_transformed"] = cleaned["stored_payload_sha256"] != value["payload_sha256"]
+        path = self.directory / filename
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         with os.fdopen(os.open(path, flags, 0o600), "w", encoding="utf-8") as stream:
             json.dump(cleaned, stream, ensure_ascii=False, indent=2, allow_nan=False)

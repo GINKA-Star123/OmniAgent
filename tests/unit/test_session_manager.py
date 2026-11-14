@@ -19,7 +19,10 @@ def _event(**overrides):
 def test_resolve_session_id_prefers_explicit_value():
     manager = SessionManager()
 
-    assert manager.resolve_session_id(_event(session_id="s-explicit")) == "s-explicit"
+    resolved = manager.resolve_session_id(_event(session_id="s-explicit"))
+    assert resolved.startswith("s12:")
+    assert resolved == manager.resolve_session_id(_event(session_id="s-explicit"))
+    assert resolved != manager.resolve_session_id(_event(user_id="u2", session_id="s-explicit"))
 
 
 def test_resolve_session_id_supports_legacy_metadata_channel():
@@ -27,13 +30,13 @@ def test_resolve_session_id_supports_legacy_metadata_channel():
 
     event = _event(metadata={"session_id": "s-legacy"})
 
-    assert manager.resolve_session_id(event) == "s-legacy"
+    assert manager.resolve_session_id(event) == manager.resolve_session_id(_event(session_id="s-legacy"))
 
 
 def test_resolve_session_id_falls_back_to_source_and_user_id():
     manager = SessionManager()
 
-    assert manager.resolve_session_id(_event()) == "chat:u1"
+    assert manager.resolve_session_id(_event()) == manager.resolve_session_id(_event(session_id="chat:u1"))
 
 
 def test_resolve_session_id_ignores_blank_values():
@@ -41,7 +44,7 @@ def test_resolve_session_id_ignores_blank_values():
 
     event = _event(session_id="   ", metadata={"session_id": "   "})
 
-    assert manager.resolve_session_id(event) == "chat:u1"
+    assert manager.resolve_session_id(event) == manager.resolve_session_id(_event())
 
 
 def test_resolve_turn_id_prefers_explicit_value():

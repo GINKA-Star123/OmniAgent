@@ -1,71 +1,81 @@
 # AIagent 评测现状与文档入口
 
-更新日期：2026-10-28。本页是当前状态的唯一维护入口；命令见[评测总流程](project-evaluation-workflow.md)，历史证据见[历史记录](evaluation-history.md)。
+更新日期：2026-11-03。本页只维护当前结论；命令见[总流程](project-evaluation-workflow.md)，原失败、预算和运行ID见[历史记录](evaluation-history.md)。
 
-## 一句话结论
+## 当前结论
 
-**评测底座已搭建，RAG、Chat、Memory 有真实 regression 通过证据；Persona、Vision 的标注和 Judge 可靠性尚未闭环，当前未批准发布基线。**
+**评测底座可运行，19例独立候选诊断已执行；新一轮自动Judge校准未通过，heldout验收条件尚未就绪。** 用户选择先让自动Judge通过校准再冻结条件，不以人工兜底替代自动验收。
 
-V1.1 后端已完成，**V1.2 第四批也已按用户确认完成**，前端仍不纳入范围。当前暂不推进第五批，先完成独立的评测审定与校准工作；评测基线尚未获准，不表示第四批开发尚未完成。heldout 留给用户最终验收，不以回归调参结果替代。
+V1.1后端、V1.2第四批按用户确认已完成；当前不推进第五批或前端。开发完成不等于评测基线获准。heldout留给用户最终验收，本轮未审阅或执行。
 
-## 已完成与仍待确认
+| 状态 | 当前证据与边界 |
+| --- | --- |
+| 最近完整业务回归 | 仍为v6：离线822/822、API检索470/470、Provider/fixed-RAG各157/157、Chat27/27、Memory6/6、Runtime3/3；Persona guard-on24/27、off27/27，Vision自动39/45，challenge20/21。不是全部质量通过，各路径及同源变体不能合算独立样本 |
+| 当前评测代码 | judge-v8、首次判断修复保护、独立视觉连续原文规则、初始评审预算前置检查；覆盖绑定派生默认关闭。新协议已有真实诊断证据，但不代表语义校准通过 |
+| 审定候选 | 18条Vision、1条Persona，12张图，非完整r4。原r3和候选不覆盖，所有人工接受/发布/校准资格仍为false |
+| Judge可靠性 | 最新50次同模型思考模式诊断：视觉5/8、文字开发8/8、位置4/4、Persona6/6、较广文字23/24；仍有3条视觉和1条文字误判。没有协议错误不等于语义校准通过，不合并为业务质量分数 |
+| 环境 | 本轮隔离API和两个评测容器已停止，卷、索引和报告保留；后续先现场核验，不使用旧PID操作。WSL业务实测不是Windows并行Memory/鉴权代码的全量验证 |
 
-| 项目 | 已有证据 | 边界或遗留问题 |
+v6完整分项与历次条件差异见[历史记录](evaluation-history.md#judge-v6-regression-复跑)。原生SIGSEGV未稳定复现，Qdrant兼容警告、可选NLP能力和系统容量也不能由上述功能通过推定已解决。
+
+## 最新校准
+
+用户最新授权继续使用现有默认 `deepseek-flash`，最多50次付费调用；本轮已全部执行。以下thinking enabled、8192输出预算、每条一次、零修复、SDK零重试。只评固定regression开发参照，不调用SUT、不重写旧报告、不运行heldout。
+
+| 实验 | 结果与解释 | Judge请求 |
 | --- | --- | --- |
-| 四层评测 | 组件、轨迹、任务评测，以及独立 load/telemetry 入口；冻结集、条件摘要、预算、报告与安全诊断已落地 | 工具存在不代表负载、容量或发布验收已执行 |
-| RAG 索引 | Windows 已构建并迁移 WSL：3364 向量、4096 维，迁移时离线校验 fresh | 历史成功不代表当前缓存实时新鲜；不要为查结果重复收费重建 |
-| 检索与生成 | v6 API 检索 470/470，Provider RAG 与 fixed-RAG 各 157/157，Chat 27/27 | 路径不同，不能合算独立样本；Chat 未捕获实际注入证据时 faithfulness=null |
-| Memory | v6 regression 6/6，包含生命周期和 cleanup | 3 个来源组；不扩大为图记忆、可选 NLP/BM25 或 heldout 验收 |
-| Persona | v6 guard 开启 24/27，关闭 27/27；v7 原失败项 2/3 通过 | Persona-17 的末轮/轨迹范围已作候选裁决，尚待用户确认；不是关闭 guard 的因果依据 |
-| Vision | v6 自动 39/45；v7/v8 做了失败定向与误判对照 | 存在错标、覆盖不足、非法原文引用与语义误判；自动通过不等于人工接受 |
-| Judge | 当前代码 judge-v8；报告协议 agent-eval-four-layers-v2；可选视觉双通道共用预算 | 同模型评审存在偏差；格式修复仍可能改变语义判断，未实现强制冻结初次判断 |
-| 原生稳定性 | v6 fixed-RAG 单进程完整结束 | 旧 SIGSEGV 未稳定复现，不能宣称根因已修复 |
-| 环境依赖 | 隔离 API、Redis/Qdrant 有历史运行证据 | Qdrant 版本兼容警告及 spaCy/fastembed 可选能力仍需单独处理；进程是否仍在须现场核验 |
+| 原图/小图正反声明 | 5/8；小图蘑菇、原图及小图手/指甲反例仍被判visible | 8 |
+| 修饰语与覆盖开发参照 | 8/8；使用显式开放世界紧凑gold协议，不是运行时默认 | 8 |
+| 非排他/明确冲突位置参照 | 4/4；本轮公园/河边判断匹配，不代表通用逻辑可靠 | 4 |
+| Persona固定三轮参照 | 6/6；包含范围、行为、身份矛盾与评审注入，不是真实Agent生成 | 6 |
+| 较广文字参照 | 23/24；覆盖关系24/24，但“上半身近景”对“有一名人物”的truth仍错判unverifiable | 24 |
 
-### 不混淆三个快照
+当前50次授权全部用完，已知输入/输出token为59157/37073（输出包含推理token），50份响应均有usage，0次SUT。无请求、解析、截断或校验错误，4条失败是语义误判。报告与调用台账见[最新诊断](evaluation-history.md#同模型思考模式50次固定参照诊断2026-11-03)。不追加费用，不以46条匹配合成Agent质量通过率或完整校准通过。
 
-- **最近完整回归：v6。** 11 个分项均有完整报告，但并非全部质量通过。
-- **当前代码：v8。** v7/v8 仅运行原失败项及已知误判对照，未执行新的完整回归。
-- **审定候选：未接受。** 标注和评审范围发生变化，不能与原 r3 分数直接比较为模型进步。
+用户已确认近景左下是衣服饰品、不是指甲，该答案不发送给Judge。此前[原图/小图及位置对照](evaluation-history.md#原图小图与位置关系对照2026-11-02)为原图4/4、小图2/4、位置3/4；[简单放大](evaluation-history.md#小图最近邻放大对照2026-11-02)两种倍数各1/4。本轮原图也出现衣饰反例漏检，进一步不能将原图子集或开启思考作为可靠性保证。文字实验仍未切换正式评分默认值，完整自动校准未通过；不建议继续对相同声明作无新假设的重复付费请求。
 
-v6 的其余完整分项为 offline 822/822、RAG challenge 20/21（1 条 Judge 异常）、Runtime 3/3。完整结果与报告 ID 见[历史记录](evaluation-history.md#judge-v6-regression-复跑)，定向结果见[失败定向记录](evaluation-history.md#失败定向修复与回归)。不把不同协议、重跑、同源变体拼成一个新通过率。
+此前[16次协议/参照诊断](evaluation-history.md#固定回答诊断与12次校准2026-11-02)与[12次盲描述/双向诊断](evaluation-history.md#盲描述与独立双向诊断2026-11-02)分别归档，旧分数和失败保留，不合算通过率。盲描述曾主动错认衣饰，不能当成视觉真值。
 
-## 本次审定做到哪里
+已落地的评测防护：
 
-[标注与口径审定](evaluation-adjudication-20261028.md)已完成 6 组图像和 Persona-17 的代理复核，产出[独立候选](../../data/evaluation/project-20261028-adjudicated-regression-v1/README.md)及 24 条校准参照。
+- **请求前脱敏留档**：Judge网络、解析或截断失败仍可复核已生成回答。原/存储摘要分开，禁止自动回放或当作人工接受；未开启debug不留原文。
+- **连续原文优先**：不为事实拆分补主语或否定词。新规则之后15条业务视觉判词没有再触发引用错误，但不能据不同图片/条件推导通用成功率；复合声明的错误细节仍不得判visible。
+- **覆盖绑定派生，显式可选**：`--judge-derive-gold-bindings`只让模型输出truth与目标relation，代码派生冗余列表。默认关闭，要求Provider、显式双通道、max_repairs=0，拒绝--release。真实校准仍有语义分歧，不提升为生产验收协议。
+- **预算前置检查**：剩余额度不足完成当前用例的初始评审时，在observer生成回答前阻断；视觉双通道至少需要2次、文本单通道至少1次。只保证初始通道额度，不预留可选修复，也不限制SUT内部费用。政策`complete-initial-review-v1`进入评审条件。
+- **图片装配契约**：零网络测试经过真实OpenAI SDK和MockTransport，核验PNG/JPEG实际请求字节、SHA、MIME、模型和thinking参数，确认预期标签未泄漏；不是远端模型看图正确的证据。
 
-- 候选共 19 例：18 条 Vision、1 条 Persona；12 张图，20 个文件。它不是完整 r4。
-- 原 r3 的 535 个文件未修改；Windows/WSL 候选逐字节一致。
-- 清单仍为 baseline_eligible=false、human_accepted=false、semantic_judge_calibrated=false。
-- 24 条参照只通过结构与引用核对，**没有真实 Judge 语义校准结果**。
-- 前次免费验证两端同范围各 264 passed、3 条既有警告，不相加；不是本次文档整理重新执行的测试。
+19例候选的原执行、36次Judge预算及18例免费兼容审计保留在[历史记录](evaluation-history.md#vision-候选独立诊断与覆盖绑定派生2026-11-01)，不在本页重复表格。原r3和候选资格不变，私有`.judge-debug`/`.review`未外拷，不转换为`--manual`判词。
 
-裁决包括红伞/蘑菇错标、外衣/内搭/饰边、花朵与花盆、构图与文字布局，以及 Persona 事实覆盖范围。逐例理由、差异和接受条件只在审定文档维护，不在操作手册重复。
+## 当前待解决项
 
-## 下一步顺序
+| 问题 | 已确认的证据 | 下一步 |
+| --- | --- | --- |
+| 业务细节与漏答 | 琵琶小图漏答长发、另一变体称短发；用户已确认近景小图该处是衣饰，不支持手和蓝色指甲的说法；红伞左右仍待确认 | 保留原自动报告，另列局部人工证据；自动passed也要抽审，不为通过修改gold |
+| Judge文字误判 | 思考模式位置4/4，较广文字覆盖24/24，但存在人物概括truth漏判；开发8条同时变更了思考模式和gold策略，不能单因果归功于开启思考 | 保留新旧失败，覆盖判断与真值分别审计，不以子集匹配替代完整校准，默认评分不变 |
+| Judge结构与截断 | 新诊断4份合法，历史绑定异常及截断未改写；额外限定仍可能错误升级真值 | 协议合法与语义正确分开；保留首次判断与失败分母，不靠补默认值通过 |
+| 视觉裁判适用性 | 最新8条有3条反例漏检，其中含原图衣饰；判词均完整合法 | 保持真实图片、原预期与失败；不靠改标签、增token或替换分辨率制造通过 |
 
-1. 用户审阅候选 gold、Persona-17 的 trajectory 范围，以及校准参照，确认接受与否；不要覆盖 r3。
-2. 确认评审口径后，在固定预算内校准 Judge，优先使用异模型并人工抽审；强制防语义升级实现前，校准显式设置 --judge-max-repairs 0。
-3. 校准通过后，再安排新版本的受控 smoke 与相关 regression，保存新条件、原报告和独立结果。
-4. 数据、评审与业务条件冻结后，由用户执行 heldout；发布和容量验收另行安排。
+后续顺序：先在固定regression开发参照上解决并验证自动Judge的文字、视觉与Persona可靠性，再执行同条件业务regression，最后冻结版本、数据、门槛、环境与费用，交给用户运行heldout。局部人工确认用于核验裁判错误，不替代用户要求的自动校准通过。当前不得启动release或总流程第9节。
 
-这些是待批准的后续步骤，本次整理没有调用 Provider/Judge、重启服务或执行 heldout。
+## 最新免费验证
+
+- 2026-11-03定向验证：Windows校准/派生68 passed；协议/视觉50 passed、2 deselected；WSL校准/派生68 passed。各命令均有1条既有弃用警告；不跨平台相加。[Windows协议JUnit](../../data/cache/reports/judge-thinking-20261103T023632Z/windows-protocol.xml)、[WSL校准JUnit](../../data/cache/reports/judge-thinking-20261103T023632Z/wsl-calibration.xml)。本轮未改核心评测代码，下列是最近更广范围结果，不冒称本轮全量复跑。
+- Windows评测单元与进程内HTTP契约：**424 passed、2 deselected、3条既有警告**。[JUnit](../../data/cache/reports/judge-small-scale-20261102T100453Z/windows-final.xml)。
+- WSL评测防护与校准定向子集：**239 passed、2 deselected、1条既有警告**。[JUnit](../../data/cache/reports/judge-small-scale-20261102T100453Z/wsl-final.xml)。范围与Windows不同，不相加，不是全项目或部署API证明。
+- 定向Ruff、此次文件diff检查通过；用户并行Memory文件的既有空白告警未处理。
+- 最近离线regression仍为2026-11-01两端各**822/822、Judge请求0**，本轮未重复；583条BM25、214条策略、25条禁用输入策略，不含真实图片、Persona生成或部署API。不合并为1644个独立样本。
+- 原r3与候选保持冻结，所有候选资格仍为false。摘要检查不等于heldout语义审阅。
 
 ## 阅读顺序
 
 | 顺序 | 文档 | 用途 |
 | --- | --- | --- |
-| 1 | 本页 | 先明确现状和停止点 |
-| 2 | [标注与口径审定](evaluation-adjudication-20261028.md) | 当前需审阅的裁决、候选、风险与进入条件 |
-| 3 | [当前实现与 Judge 协议](project-evaluation-implementation.md) | 理解实际调用、评分、预算和错误码 |
-| 4 | [评测总流程](project-evaluation-workflow.md) | 获准执行后使用的 WSL 唯一操作入口 |
-| 按需 | [Windows 手册](project-evaluation-windows-runbook.md) | PowerShell 变体，不混用两端 venv、PID 或基线 |
-| 按需 | [r3 数据集说明](../../data/evaluation/project-20261026-r3/DATASET_CARD.md)及[文件索引](../../data/evaluation/project-20261026-r3/README.md) | 核对来源、split、gold 和外发边界 |
-| 按需 | [四层体系设计](aiagent-evaluation-system.md) | 设计目标与指标，不代表全部已验收 |
-| 按需 | [历史记录](evaluation-history.md) | 查原失败、运行 ID、修复、费用边界和索引备份 |
+| 1 | 本页 | 当前结论、停止点及后续顺序 |
+| 2 | [标注与口径审定](evaluation-adjudication-20261028.md) | 裁决依据、候选边界和红伞局部人工确认 |
+| 3 | [实现与Judge协议](project-evaluation-implementation.md) | 实际评分、防护、可选协议及错误码 |
+| 4 | [评测总流程](project-evaluation-workflow.md) | WSL唯一操作入口，获准后逐项执行 |
+| 按需 | [Windows手册](project-evaluation-windows-runbook.md) | PowerShell变体，不混用两端venv、PID或基线 |
+| 按需 | [数据卡](../../data/evaluation/project-20261026-r3/DATASET_CARD.md)与[数据索引](../../data/evaluation/project-20261026-r3/README.md) | 来源、split、gold及外发边界 |
+| 按需 | [四层设计](aiagent-evaluation-system.md)与[历史记录](evaluation-history.md) | 指标设计、所有原失败和真实执行证据 |
 
-## 文档保留边界
-
-日期执行页已合并进历史记录并移除，不保留空壳转发页。仍有效的审定文件、机器可读裁决/校准参照、视觉 [v1](project-eval-visual-annotations.json)/[v2](project-eval-visual-annotations-v2.json)依赖、冻结集与原始报告均保留。
-
-[RAG 专项指南](rag-eval.md)和[V1.2 第四批质量工具](../v1.2/v1.2-agent-evaluation.md)对应独立 CLI，不与四层主评测混为同一基线。V1.2 后续代码交付原稿属于待实施参考，不是完成证明；历史版本学习资料不因日期旧而删除。
+不删除冻结集、候选、原始报告、失败记录或被引用的标注。日期执行页已合并至历史记录，不恢复空壳转发页。[RAG专项CLI](rag-eval.md)和[V1.2第四批工具](../v1.2/v1.2-agent-evaluation.md)是独立入口，不与四层主评测混作同一基线；本轮不修改V1.2规划或其他业务文档。

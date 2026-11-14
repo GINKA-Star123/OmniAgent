@@ -43,17 +43,16 @@ def test_orphan_marker_is_protocol_error_not_silently_rescored(monkeypatch):
     assert 'fact_accuracy' not in result.metrics
 
 
-def test_orphan_marker_can_receive_one_bounded_protocol_repair(monkeypatch):
+def test_orphan_marker_cannot_be_dropped_to_improve_claim_denominator(monkeypatch):
     raw = cited_verdict()
     raw['claims'].append({'quote': '[doc]', 'truth': 'unverifiable', 'support': 'insufficient'})
     judge, calls = provider(monkeypatch, [response(raw), response(cited_verdict())], request_budget=2)
     result = score(semantic_case(), cited_observation(), judge, 'citation@1')
-    assert result.status == 'passed'
-    assert [d.code for d in result.judge_diagnostics] == ['citation_marker_not_fact', 'ok']
-    assert result.metrics['claim_count'] == 1
-    assert result.metrics['fact_accuracy'] == result.metrics['faithfulness'] == 1
-    assert result.metrics['citation_accuracy'] == result.metrics['citation_coverage'] == 1
-    assert len(calls) == 2
+    assert result.status == 'judge_error'
+    assert result.error_code == 'citation_marker_not_fact'
+    assert [d.code for d in result.judge_diagnostics] == ['citation_marker_not_fact']
+    assert result.metrics == {} and len(calls) == 1
+    assert not result.judge_diagnostics[0].retryable
 
 
 def test_known_citation_does_not_make_a_wrong_fact_correct(monkeypatch):

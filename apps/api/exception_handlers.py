@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
 
 from apps.api.response_utils import error_message_response
@@ -18,6 +19,10 @@ def _stage_from_path(path: str) -> str:
     if path.startswith("/cloud"):
         return "cloud"
     if path.startswith("/voice/realtime"):
+        # Auth failures happen before the route can set its operation-specific stage.
+        operation = path.removeprefix("/voice/realtime/").partition("/")[0]
+        if operation in {"start", "state", "turn", "interrupt", "end"}:
+            return f"voice_realtime_{operation}"
         return "voice_realtime"
     if path.startswith("/voice"):
         return "voice"
@@ -45,19 +50,25 @@ async def http_exception_handler(request:Request, exc: HTTPException) -> Respons
         error = str(detail)
         extra = {}
 
-    return error_message_response(
+    response = error_message_response(
         stage=stage,
         error=error,
         status_code=exc.status_code,
         extra=extra,
     )
+    for name, value in (exc.headers or {}).items():
+        response.headers[name] = value
+    return response
 
-async def validation_exception_handler(request:Request, exc:HTTPException) -> Response:
+async def validation_exception_handler(request:Request, exc:RequestValidationError) -> Response:
     return error_message_response(
         stage = f"{_stage_from_path(request.url.path)}_validation",
         error = "request validation failed",
         status_code = 422,
         extra = {
-            "detail": exc.errors(), # type: ignore
+            "detail": [
+                {"type": item["type"], "loc": list(item["loc"])}
+                for item in exc.errors()
+            ],
         }
     )

@@ -54,7 +54,7 @@ class MemoryWriteDispatcher:
 
         try:
             self._executor.submit(self._run, task_id, fn, kwargs)
-        except Exception as exc:
+        except Exception:
             with self._condition:
                 self._pending.pop(task_id, None)
                 self._condition.notify_all()
@@ -64,10 +64,11 @@ class MemoryWriteDispatcher:
                 "status": "failed",
                 "task_id": task_id,
                 "reason": "memory_write_submit_failed",
-                "error": str(exc),
+                "error": "memory_write_submit_failed",
                 "created_at": _utc_now(),
             }
-            self._history.append(record)
+            with self._condition:
+                self._history.append(record)
             return dict(record)
 
         return {
@@ -105,26 +106,22 @@ class MemoryWriteDispatcher:
     def shutdown(self, wait: bool = False) -> None:
         self._executor.shutdown(wait=wait, cancel_futures=False)
 
-    def _run(self, task_id: str, fn: Callable[..., Any], kwargs: dict[str, Any]) -> None:
-        status = "done"
-        error = ""
+    def _run(self, task_id: str, fn, kwargs: dict[str, Any]) -> None:
         try:
-            fn(**kwargs)
-        except Exception as exc:
-            # 记忆写入失败绝不能影响已经发给用户的回复。
+            result = fn(**kwargs)
+            if isinstance(result, dict) and result.get("status") == "stored" and result.get("ok") is True:
+                status = "done"
+            elif isinstance(result, dict) and result.get("status") == "skipped":
+                status = "skipped"
+            else:
+                status = "failed"
+        except Exception:
             status = "failed"
-            error = str(exc)
-            logger.warning("Async memory write failed: %s", exc)
-
+            logger.warning("memory_write_failed")
         record = {
-            "ok": status == "done",
-            "status": status,
-            "task_id": task_id,
-            "reason": "memory_write_finished" if status == "done" else "memory_write_failed",
-            "error": error,
-            "finished_at": _utc_now(),
+            "ok": status == "done", "status": status, "task_id": task_id,
+            "reason": f"memory_write_{status}", "finished_at": _utc_now(),
         }
-
         with self._condition:
             self._pending.pop(task_id, None)
             self._history.append(record)

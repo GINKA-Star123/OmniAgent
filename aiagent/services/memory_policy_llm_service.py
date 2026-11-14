@@ -119,7 +119,7 @@ planner 信号：
     def _parse(self, raw: str) -> MemoryWriteDecision:
         try:
             data = self._extract_json(raw)
-            should_store = bool(data.get("should_store", False))
+            should_store = data.get("should_store") is True
 
             facts = self._normalize_facts(data.get("facts"))
             memory_hint = str(data.get("memory_hint", "")).strip()
@@ -138,15 +138,12 @@ planner 信号：
                 memory_hint=memory_hint,
                 facts=facts,
                 confidence=self._safe_float(data.get("confidence"), 0.0),
-                metadata={"raw_policy_response": raw},
+                metadata={},
             )
-        except Exception as exc:
-            logger.exception("Failed to parse memory policy response: %s", exc)
-            return MemoryWriteDecision(
-                should_store=False,
-                reason=f"parse_failed: {exc}",
-                metadata={"raw_policy_response": raw},
-            )
+        except Exception:
+            logger.warning("memory_policy_parse_failed")
+            return MemoryWriteDecision(should_store=False, reason="policy_parse_failed")
+
 
     def _extract_json(self, raw: str) -> dict[str, Any]:
         text = raw.strip()

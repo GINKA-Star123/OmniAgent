@@ -12,15 +12,17 @@ def degraded_chat_response(
     user_text: str = "",
     retry_after_seconds: int = 5,
 ) -> dict[str, Any]:
+    del user_text
+    error = "generation_unavailable" if error == "generation_unavailable" else "service_unavailable"
     fallback_reply = "唉唉唉，阿绫这边有点忙，稍后再回复你哦"
-
-    if user_text.strip():
-        fallback_reply = "唉唉唉，阿绫这边有点忙，稍后再回复你哦"
 
     return {
         "ok": False,
         "stage": stage,
         "error": error,
+        "code": error,
+        "should_speak": False,
+        "should_store_memory": False,
         "retry_after_seconds": retry_after_seconds,
         "request_id": get_request_id(),
         "degraded": True,

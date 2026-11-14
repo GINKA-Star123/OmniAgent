@@ -32,4 +32,7 @@ async def ready_check():
     带强认证的 GET /cloud/ops/readiness。
     """
     snapshot = await build_public_readiness()
-    return json_response(redact_snapshot(snapshot).model_dump(mode="json"))
+    return json_response(
+        redact_snapshot(snapshot).model_dump(mode="json"),
+        status_code=200 if snapshot.ok else 503,
+    )

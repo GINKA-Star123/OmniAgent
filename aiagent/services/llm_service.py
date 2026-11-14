@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from aiagent.services.generation_errors import GenerationUnavailableError
 from config.providers import LLMProvider
 from config.settings import Settings
 
@@ -84,22 +85,17 @@ class LLMService:
             client.close()
 
     def invoke_messages(
-        self,
-        messages: Sequence[BaseMessage],
-        fallback_text: str,
-        mode: str = "chat",
-        persona_name: str | None = None,
+        self, messages: Sequence[BaseMessage], fallback_text: str,
+        mode: str = "chat", persona_name: str | None = None,
     ) -> str:
         del mode, persona_name
-
         if self.settings.enable_mock_llm or self.settings.llm_provider == LLMProvider.MOCK:
             return fallback_text
-
         try:
             return self.invoke_messages_strict(messages)
-        except Exception as exc:
-            self.logger.exception("LLM invoke failed: %s", exc)
-            return fallback_text
+        except Exception:
+            self.logger.warning("generation_unavailable")
+            raise GenerationUnavailableError() from None
 
     def invoke_with_memory(
         self,

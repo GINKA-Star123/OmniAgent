@@ -93,24 +93,30 @@ def test_invalid_json_and_schema_are_diagnosed(monkeypatch, raw, code):
 
 
 def test_format_repair_is_bounded_and_all_usage_is_counted(monkeypatch):
-    judge, calls = provider(monkeypatch, [response("not-json"), response(verdict())], request_budget=2)
+    broken = verdict()
+    broken["coverage_claims"] = {}
+    judge, calls = provider(monkeypatch, [response(broken), response(verdict())], request_budget=2)
     result = score(semantic_case(), observation(), judge, "c@1")
     assert result.status == "passed"
-    assert [d.code for d in result.judge_diagnostics] == ["verdict_json_invalid", "ok"]
+    assert [d.code for d in result.judge_diagnostics] == ["coverage_bindings_mismatch", "ok"]
     assert judge.usage["logical_requests"] == 2 and judge.usage["repair_requests"] == 1
     assert judge.usage["prompt_tokens_known"] == 22 and judge.usage["completion_tokens_known"] == 14
-    assert "verdict_json_invalid" in calls[1][-1]["content"]
-    assert "not-json" not in json.dumps(calls[1])
+    assert "coverage_bindings_mismatch" in calls[1][-1]["content"]
+    assert not any(item["role"] == "assistant" for item in calls[1])
 
 
 def test_repeated_protocol_errors_stop_after_one_repair(monkeypatch):
-    judge, calls = provider(monkeypatch, [response("broken"), response("broken")])
+    broken = verdict()
+    broken["coverage_claims"] = {}
+    judge, calls = provider(monkeypatch, [response(broken), response(broken)])
     result = score(semantic_case(), observation(), judge, "c@1")
     assert result.status == "judge_error" and len(calls) == 2
 
 
 def test_global_request_budget_blocks_additional_calls(monkeypatch):
-    judge, calls = provider(monkeypatch, [response("broken")], request_budget=1)
+    broken = verdict()
+    broken["coverage_claims"] = {}
+    judge, calls = provider(monkeypatch, [response(broken)], request_budget=1)
     result = score(semantic_case(), observation(), judge, "c@1")
     assert result.error_stage == "budget" and result.error_code == "request_budget_exhausted"
     assert len(calls) == 1 and judge.usage["logical_requests"] == 1

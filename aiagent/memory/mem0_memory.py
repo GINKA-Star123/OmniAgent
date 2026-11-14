@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 from dataclasses import dataclass, field
@@ -10,6 +11,13 @@ from urllib.parse import urlparse
 
 from mem0 import Memory
 
+from aiagent.memory.approved_write import (
+    ApprovedMemoryWrite,
+    approve_plan,
+    approved_metadata,
+    verify_approved,
+)
+from aiagent.memory.mem0_log_guard import install_mem0_log_guard
 from aiagent.memory.memory_layers import (
     build_memory_snapshot,
     infer_memory_layer,
@@ -17,7 +25,14 @@ from aiagent.memory.memory_layers import (
     sort_memory_records,
 )
 from aiagent.memory.memory_safety import MemorySafetyFilter
-from aiagent.schemas.memory import MemoryCategory, MemoryImportance, MemoryLayer, MemoryRecord, MemorySnapshot
+from aiagent.schemas.memory import (
+    MemoryCategory,
+    MemoryImportance,
+    MemoryLayer,
+    MemoryRecord,
+    MemorySnapshot,
+    MemoryStorePlan,
+)
 from config.env_secrets import resolve_named_secret
 
 logger = logging.getLogger(__name__)
@@ -60,7 +75,7 @@ class Mem0LongTermMemory:
         embedding_dims: int = 1536,
         qdrant_host: str = "localhost",
         qdrant_port: int = 6333,
-        enable_graph: bool = True,
+        enable_graph: bool = False,
         graph_provider: str = "neo4j",
         graph_url: str | None = None,
         graph_username: str | None = None,
@@ -69,6 +84,9 @@ class Mem0LongTermMemory:
         reset_vector_store: bool = False,
         llm_base_url: str | None = None,
     ) -> None:
+        install_mem0_log_guard()
+        if enable_graph:
+            raise RuntimeError("memory_graph_requires_separate_approved_adapter")
         self.enable_graph = enable_graph
         self.graph_provider = graph_provider
         self.graph_url = graph_url or ""
@@ -170,6 +188,9 @@ class Mem0LongTermMemory:
             enable_graph,
         )
         self.memory = Memory.from_config(config)
+        parameters = inspect.signature(self.memory.add).parameters
+        if "infer" not in parameters:
+            raise RuntimeError("mem0_direct_write_unsupported")
 
     def graph_status(self) -> dict[str, Any]:
         return {
@@ -202,60 +223,41 @@ class Mem0LongTermMemory:
             },
         }
 
-        if self.enable_graph:
-            kwargs["enable_graph"] = True
-
         with self._lock:
             raw = self.memory.search(**kwargs)
 
         return self._normalize_search(raw)
 
     def add_turn(
-        self,
-        user_id: str,
-        user_name: str,
-        user_text: str,
-        assistant_text: str,
-        session_id: str,
-        turn_id: str,
-        agent_id: str = "yzl",
-        metadata: dict[str, Any] | None = None,
+        self, user_id: str, user_name: str, user_text: str, assistant_text: str,
+        session_id: str, turn_id: str, agent_id: str = "yzl", metadata=None,
     ) -> dict[str, Any]:
-        """在策略允许时写入一轮完整的用户/助手对话。"""
-        if not user_text.strip() or not assistant_text.strip():
-            return {"status": "skipped", "reason": "empty_turn"}
-        memory_metadata = {
-            "source": "chat_turn",
-            "user_name": user_name,
-            "session_id": session_id,
-            "turn_id": turn_id,
-            "agent_id": agent_id,
-            **(metadata or {}),
-        }
-        memory_metadata["memory_layer"] = infer_memory_layer(
-            memory_metadata.get("category"),
-            memory_metadata,
-        ).value
-
-        kwargs: dict[str, Any] = {
-            "messages": [
-                {"role": "user", "content": user_text.strip()},
-                {"role": "assistant", "content": assistant_text.strip()},
-            ],
-            "user_id": user_id,
-            "agent_id": agent_id,
-            "run_id": session_id,
-            "metadata": memory_metadata,
-            "prompt": self._build_chinese_memory_prompt(memory_metadata),
-        }
-
+        # 旧入口保留签名，但不再允许原始问答自由抽取。
+        return {"ok": False, "status": "blocked", "reason": "approved_payload_required"}
+    def add_approved(self, payload: ApprovedMemoryWrite) -> dict[str, Any]:
+        verify_approved(payload)
         if self.enable_graph:
-            kwargs["enable_graph"] = True
-
+            raise RuntimeError("memory_graph_requires_separate_approved_adapter")
         with self._lock:
-            result = self.memory.add(**kwargs)
-
-        return result if isinstance(result, dict) else {"status": "ok", "result": result}
+            raw = self.memory.add(
+                messages=[{"role": "user", "content": payload.text}],
+                user_id=payload.user_id,
+                agent_id=payload.agent_id,
+                metadata=approved_metadata(payload),
+                infer=False,
+            )
+        items = raw.get("results") if isinstance(raw, dict) else None
+        if (not isinstance(items, list) or len(items) != 1
+                or raw.get("ok") is False or raw.get("status") in {"failed", "error"}):
+            return {"ok": False, "status": "failed", "reason": "mem0_result_invalid"}
+        item = items[0]
+        if not (
+            isinstance(item, dict) and item.get("event") == "ADD"
+            and isinstance(item.get("id"), str) and item["id"]
+            and item.get("memory") == payload.text
+        ):
+            return {"ok": False, "status": "failed", "reason": "mem0_result_invalid"}
+        return {"ok": True, "status": "stored", "memory_id": item["id"]}
 
     def _build_chinese_memory_prompt(self, metadata: dict[str, Any]) -> str:
         """引导 Mem0 保留稳定中文事实，而不是临时闲聊。"""
@@ -383,33 +385,16 @@ class Mem0LongTermMemory:
         )
 
 
-    def delete_memory(self, memory_id: str) -> dict[str, Any]:
-        memory_id = memory_id.strip()
-        if not memory_id:
-            return {
-                "ok": False,
-                "status": "skipped",
-                "reason": "empty_memory_id",
-            }
-
+    def delete_memory(
+        self, memory_id: str, *, user_id: str, agent_id: str = "yzl",
+    ) -> dict[str, Any]:
         with self._lock:
+            if self.get_memory_record(memory_id, user_id, agent_id) is None:
+                return {"ok": False, "status": "not_found", "reason": "memory_not_found"}
             result = self.memory.delete(memory_id)
-
-        if isinstance(result, dict):
-            return {
-                "ok": True,
-                "status": "deleted",
-                "memory_id": memory_id,
-                "result": result,
-            }
-
-        return {
-            "ok": True,
-            "status": "deleted",
-            "memory_id": memory_id,
-            "result": result,
-        }
-
+            if isinstance(result, dict) and result.get("ok") is False:
+                return {"ok": False, "status": "failed", "reason": "memory_delete_failed"}
+        return {"ok": True, "status": "deleted", "memory_id": memory_id}
 
     def delete_layer(
         self,
@@ -433,13 +418,16 @@ class Mem0LongTermMemory:
             if not record.id:
                 continue
             try:
-                self.delete_memory(record.id)
+                result = self.delete_memory(record.id, user_id=user_id, agent_id=agent_id)
+                if result.get("ok") is not True:
+                    errors.append({"memory_id": record.id, "error": "memory_delete_failed"})
+                    continue
                 deleted_ids.append(record.id)
-            except Exception as exc:
+            except Exception:
                 errors.append(
                     {
                         "memory_id": record.id,
-                        "error": str(exc),
+                        "error": "memory_delete_failed",
                     }
                 )
 
@@ -490,6 +478,8 @@ class Mem0LongTermMemory:
                 score = None
 
             metadata = item.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
             relations = item.get("relations") or []
 
             hits.append(
@@ -580,106 +570,72 @@ class Mem0LongTermMemory:
         return len(value) >= 32 and any(ch.isdigit() for ch in value)
 
     def get_memory_record(
-            self,
-            memory_id:str,
-            user_id: str,
-            agent_id: str = "yzl",
+        self, memory_id: str, user_id: str, agent_id: str = "yzl",
     ) -> MemoryRecord | None:
-        memory_id = memory_id.strip()
-        if not memory_id:
+        if not memory_id.strip():
             return None
-
         with self._lock:
             raw = self.memory.get(memory_id)
-
         if not isinstance(raw, dict):
             return None
-
-        record = normalize_memory_record(raw)
-        metadata = record.metadata or {}
-        owned_user = raw.get("user_id") or metadata.get("user_id")
-        owned_agent = raw.get("agent_id") or metadata.get("agent_id") or agent_id
-
-        if owned_user and str(owned_user) != user_id:
+        metadata = raw.get("metadata") or {}
+        if not isinstance(metadata, dict):
             return None
-        if owned_agent and str(owned_agent) != agent_id:
+        owner = raw.get("user_id") or metadata.get("user_id")
+        agent = raw.get("agent_id") or metadata.get("agent_id")
+        if owner != user_id or agent != agent_id:
             return None
-
-        return record
+        return normalize_memory_record(raw)
 
     def update_memory(
-            self,
-            *,
-            user_id: str,
-            memory_id: str,
-            memory_text: str,
-            category: MemoryCategory| None = None,
-            importance: MemoryImportance| None = None,
-            layer: MemoryLayer | None = None,
-            pinned: bool | None = None,
-            agent_id: str = "yzl",
-            reason: str = "",
-            metadata: dict[str,Any] | None = None
-    ) -> dict[str,Any]:
-        record = self.get_memory_record(memory_id=memory_id, user_id=user_id, agent_id=agent_id)
-        if record is None:
-            return {
-                "ok":False,
-                "status":"not_found",
-                "reason":"memory_not_found",
-            }
-
-        guard = self.safety_filter.evaluate(memory_text)
-        if not guard.allowed:
-            return {
-                "ok":False,
-                "status":"blocked",
-                "resaon":guard.reason,
-                "guard":guard.model_dump(mode="json"),
-            }
-
-        next_metadata = dict(record.metadata or {})
-        next_metadata.update(metadata or {})
-        # Active records must not retain the superseded fact in extraction/query hints.
-        for key in (
-            "memory_hint", "vision_memory_hint", "memory_retrieval_query",
-            "memory_write_reason", "policy_reason",
-        ):
-            next_metadata.pop(key, None)
-        next_metadata["memory_hint"] = guard.redacted_text.strip()
-
-        next_category = category or record.category
-        next_importance = importance or record.importance
-
-        next_metadata["category"] = next_category.value
-        next_metadata["importance"] = next_importance.value
-        next_metadata["memory_layer"] = (layer or infer_memory_layer(next_category, next_metadata)).value
-        next_metadata["edited_by_user"] = True
-        next_metadata["edit_reason"] = reason.strip() or "user_edit"
-        next_metadata["edited_at"] = self._utc_now()
-
-        if pinned is not None:
-            next_metadata["pinned"] = bool(pinned)
-            next_metadata["pinned_at"] = self._utc_now() if pinned else ""
-
+        self, *, user_id: str, memory_id: str, memory_text: str,
+        category: MemoryCategory | None = None,
+        importance: MemoryImportance | None = None,
+        layer: MemoryLayer | None = None,
+        pinned: bool | None = None,
+        agent_id: str = "yzl", reason: str = "", metadata=None,
+        _source: str = "user_edit",
+    ) -> dict[str, Any]:
+        del reason, metadata
         with self._lock:
-            result = self.memory.update(
-                memory_id,
-                guard.redacted_text.strip(),
-                metadata=next_metadata,
+            record = self.get_memory_record(memory_id, user_id, agent_id)
+            if record is None:
+                return {"ok": False, "status": "not_found", "reason": "memory_not_found"}
+            guard = self.safety_filter.evaluate(memory_text)
+            if not guard.allowed:
+                return {"ok": False, "status": "blocked", "reason": "sensitive_memory_blocked"}
+            plan = MemoryStorePlan(
+                should_store=True, status="ready", source=_source,
+                category=category or record.category,
+                importance=importance or record.importance,
+                memory_text=guard.redacted_text, guard=guard,
             )
-
-        updated = self.get_memory_record(memory_id=memory_id, user_id=user_id, agent_id=agent_id)
-
-        return {
-            "ok":True,
-            "status":"updated",
-            "user_id":user_id,
-            "agent_id":agent_id,
-            "memory_id":memory_id,
-            "result":result,
-            "record":updated.model_dump(mode="json") if updated else None,
-        }
+            payload = approve_plan(plan, user_id=user_id, agent_id=agent_id)
+            next_metadata = approved_metadata(payload)
+            next_metadata.update(
+                user_id=user_id, agent_id=agent_id,
+                memory_layer=(layer or infer_memory_layer(plan.category)).value,
+                pinned=record.pinned if pinned is None else bool(pinned), # type: ignore
+                pinned_at=self._utc_now() if (record.pinned if pinned is None else pinned) else "",
+                edited_by_user=True, edited_at=self._utc_now(), # type: ignore
+            )
+            # 不合并旧 metadata 或用户 metadata，也不保留旧 memory_hint。
+            raw_update = self.memory.update(memory_id, payload.text, metadata=next_metadata)
+            if isinstance(raw_update, dict) and (
+                raw_update.get("ok") is False or raw_update.get("status") in {"failed", "error"}
+            ):
+                return {"ok": False, "status": "failed", "reason": "memory_update_failed"}
+            updated = self.get_memory_record(memory_id, user_id, agent_id)
+            if (updated is None or updated.memory != payload.text
+                    or any(updated.metadata.get(key) != value
+                           for key, value in next_metadata.items()
+                           if key not in {"user_id", "agent_id", "created_at", "updated_at"})):
+                return {"ok": False, "status": "failed", "reason": "memory_update_unconfirmed"}
+            return {
+                "ok": True, "status": "updated", "user_id": user_id,
+                "agent_id": agent_id, "memory_id": memory_id,
+                "record": updated.model_dump(mode="json"),
+            }
 
     def set_memory_pinned(
             self,
@@ -762,6 +718,7 @@ class Mem0LongTermMemory:
             agent_id=agent_id,
             reason=reason or "user_conflict_merge",
             metadata=merged_metadata,
+            _source="user_merge",
         )
 
         if update_result.get("ok") is not True:
@@ -771,10 +728,13 @@ class Mem0LongTermMemory:
         errors: list[dict[str, Any]] = []
         for old_id in ids[1:]:
             try:
-                self.delete_memory(old_id)
+                result = self.delete_memory(old_id, user_id=user_id, agent_id=agent_id)
+                if result.get("ok") is not True:
+                    errors.append({"memory_id": old_id, "error": "memory_delete_failed"})
+                    continue
                 deleted_ids.append(old_id)
-            except Exception as exc:
-                errors.append({"memory_id": old_id, "error": str(exc)})
+            except Exception:
+                errors.append({"memory_id": old_id, "error": "memory_delete_failed"})
 
         return {
             "ok": not errors,

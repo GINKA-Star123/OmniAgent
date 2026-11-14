@@ -25,6 +25,7 @@ from aiagent.vision.confidence_policy import (
     RETRIEVAL_ONLY_SOURCE,
     VisionConfidencePolicy,
 )
+from aiagent.vision.gif_frames import gif_metadata, prepare_gif_content
 from aiagent.vision.image_store import ImageStore, StoredImage
 from aiagent.vision.vision_memory_policy import decide_memory
 from aiagent.vision.vision_payload_guard import (
@@ -97,20 +98,49 @@ class VisionService:
         user_prompt: str = "",
         user_id: str = "guest",
     ) -> VisionAnalyzeResult:
+        if stored.format == "GIF" and stored.gif_info is None:
+            raise RuntimeError("gif_validation_metadata_missing")
+        # Character retrieval remains first-frame only; it is not motion evidence.
         candidates = self.character_retriever.retrieve(stored.path, top_k=5)
         model_data = self._analyze_with_model(
             stored=stored,
             candidates=candidates,
             user_prompt=user_prompt,
         )
-
-        return self._build_result(
+        result = self._build_result(
             stored=stored,
             candidates=candidates,
             model_data=model_data,
             user_prompt=user_prompt,
             user_id=user_id,
         )
+        if stored.format == "GIF":
+            assert stored.gif_info is not None
+            is_mock = self.provider in {"", "mock"}
+            result.metadata.update(gif_metadata(stored.gif_info))
+            result.metadata.update({
+                "vision_animation_inference": "mock" if is_mock else "sampled_frames",
+                "vision_gif_sent_frame_count": (
+                    0 if is_mock else len(result.metadata["vision_gif_sample_indices"])
+                ),
+                "vision_character_retrieval_scope": "first_frame_only",
+            })
+            result.memory = VisionMemoryCandidate(
+                should_consider=False,
+                reason="gif_transient_media",
+            )
+            result.memory_decision = result.memory_decision.model_copy(update={
+                "allow": False,
+                "reason_code": "gif_transient_media",
+                "reason": "GIF 仅用于当前视觉问答，不从画面推导长期偏好",
+                "categories": [],
+            })
+            result.metadata.update({
+                "vision_memory_decision_allow": False,
+                "vision_memory_decision_reason_code": "gif_transient_media",
+                "vision_memory_decision_reason": result.memory_decision.reason,
+            })
+        return result
 
     def rebuild_character_index(self, force_rebuild: bool = True) -> dict[str, Any]:
         return self.character_retriever.build_index(force_rebuild=force_rebuild)
@@ -151,7 +181,13 @@ class VisionService:
         if not self.model:
             raise RuntimeError("Vision model is not configured.")
 
-        image_data_url = self._image_to_data_url(stored.path)
+        if stored.format == "GIF":
+            media_content = prepare_gif_content(stored.path)
+        else:
+            media_content = [{
+                "type": "image_url",
+                "image_url": {"url": self._image_to_data_url(stored.path)},
+            }]
         candidate_text = self._format_candidates_for_prompt(candidates)
 
         prompt = """
@@ -256,7 +292,7 @@ B. 日常图片：
                             "user_prompt": user_prompt or "请描述图片中的可见内容。",
                             "candidate_data": candidate_text,
                         }, ensure_ascii=False)},
-                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                        *media_content,
                     ],
                 }
             ],

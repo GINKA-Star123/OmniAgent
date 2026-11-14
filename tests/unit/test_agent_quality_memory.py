@@ -15,7 +15,7 @@ def _make_runner(tmp_path, *, facts=None, should_store=True, hits=None):
     memory = Mock()
     memory.search.return_value = list(hits or [])
     memory.list_pinned_records.return_value = []
-    memory.add_turn.return_value = {"ok": True, "status": "stored"}
+    memory.add_approved.return_value = {"ok": True, "status": "stored"}
     policy = Mock()
     policy.decide_write.return_value = MemoryWriteDecision(
         should_store=should_store,
@@ -48,12 +48,11 @@ def _write(runner):
 def test_safe_memory_passes_guard_and_writes_exactly_once(tmp_path):
     runner, memory, policy = _make_runner(tmp_path)
     result = _write(runner)
-    assert result["memory_store_plan"].status == "ready"
     assert result["store_result"]["status"] == "stored"
-    memory.add_turn.assert_called_once()
+    memory.add_approved.assert_called_once()
     policy.decide_write.assert_called_once()
-    assert memory.add_turn.call_args.kwargs["metadata"]["memory_guard_status"] == "ready"
-    assert result["metadata"]["memory_guard_write_status"] == "done"
+    assert memory.add_approved.call_args.args[0].text == "用户喜欢川菜。"
+    assert "memory_store_plan" not in result
 
 
 @pytest.mark.parametrize(("kind", "expected_status"), [
@@ -69,10 +68,9 @@ def test_policy_sensitive_and_duplicate_contrasts_never_write(tmp_path, kind, ex
         kwargs["hits"] = [MemoryHit(id="old", memory="用户喜欢川菜。", score=0.99)]
     runner, memory, _ = _make_runner(tmp_path, **kwargs)
     result = _write(runner)
-    assert result["memory_store_plan"].status == expected_status
-    assert not result["memory_store_plan"].should_store
+    assert result["store_result"]["status"] == expected_status
+    memory.add_approved.assert_not_called()
     memory.add_turn.assert_not_called()
-    assert "store_result" not in result
 
 
 def test_guard_exception_is_fail_closed(tmp_path, monkeypatch):
@@ -84,8 +82,8 @@ def test_guard_exception_is_fail_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.intake_service, "build_store_plan", fail_guard)
     result = _write(runner)
     memory.add_turn.assert_not_called()
-    assert result.get("memory_store_plan") is None
-    assert result["metadata"]["memory_guard_write_status"] == "failed"
+    memory.add_approved.assert_not_called()
+    assert result["store_result"]["status"] == "blocked"
 
 
 def test_policy_exception_is_fail_closed(tmp_path):
@@ -93,7 +91,8 @@ def test_policy_exception_is_fail_closed(tmp_path):
     policy.decide_write.side_effect = RuntimeError("synthetic policy failure")
     result = _write(runner)
     memory.add_turn.assert_not_called()
-    assert result["memory_store_plan"].reason == "missing_write_decision"
+    memory.add_approved.assert_not_called()
+    assert result["store_result"]["status"] == "skipped"
 
 
 def test_disabled_memory_skips_read_pin_policy_and_write_then_can_reenable(tmp_path):
@@ -103,7 +102,7 @@ def test_disabled_memory_skips_read_pin_policy_and_write_then_can_reenable(tmp_p
     written = _write(runner)
     assert retrieved["memory_prompt_context"] == "无长期记忆。"
     assert retrieved["memory_hits"] == []
-    assert written["store_result"]["reason"] == "long_term_memory_disabled_by_user"
+    assert written["store_result"]["reason"] == "memory_disabled"
     memory.search.assert_not_called()
     memory.list_pinned_records.assert_not_called()
     memory.add_turn.assert_not_called()
@@ -115,7 +114,7 @@ def test_disabled_memory_skips_read_pin_policy_and_write_then_can_reenable(tmp_p
     memory.search.assert_called_once()
     memory.list_pinned_records.assert_called_once()
     policy.decide_write.assert_called_once()
-    memory.add_turn.assert_called_once()
+    memory.add_approved.assert_called_once()
 
 
 def test_disabled_preference_is_scoped_to_user(tmp_path):

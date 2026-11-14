@@ -105,17 +105,13 @@ class NullLongTermMemory:
             layers=[],
         )
 
+    def add_approved(self, payload) -> dict[str, Any]:
+        return {"ok": False, "status": "skipped", "reason": "memory_disabled", "degraded": True}
+
     def delete_memory(
-            self,
-            memory_id: str
-    ) -> dict[str,Any]:
-        return {
-            "ok":False,
-            "status":"skipped",
-            "degraded":True,
-            "reason":self.reason,
-            "memory_id":memory_id
-        }
+        self, memory_id: str, *, user_id: str = "", agent_id: str = "yzl",
+    ) -> dict[str, Any]:
+        return {"ok": False, "status": "not_found", "reason": "memory_disabled"}
 
     def delete_layer(
     self,

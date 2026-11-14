@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from uuid import uuid4
 
 from aiagent.schemas.inputs import InputEvent
@@ -12,27 +14,18 @@ TURN_METADATA_KEY = "turn_id"
 
 class SessionManager:
     def resolve_session_id(self, event: InputEvent) -> str:
-        """
-        解析会话ID
+        user = event.user_id.strip()
+        if not user:
+            raise ValueError("session_owner_required")
+        logical = (
+            (event.session_id or "").strip()
+            or str(event.metadata.get(SESSION_METADATA_KEY) or "").strip()
+            or f"{event.source}:{user}"
+        )
+        digest = hashlib.sha256(json.dumps([user, logical], ensure_ascii=False,
+                                          separators=(",", ":")).encode()).hexdigest()
+        return f"s12:{digest}"
 
-        优先级:
-
-        1.``event.session_id``: 调用方显示指定
-        2.``event.metadata[session_id]``: 旧客户端兼容通道
-        3.``f"{event.source}:{event.user_id}": 保持历史行为
-        """
-
-        explicit = (event.session_id or "").strip()
-
-        if explicit:
-            return explicit
-
-        from_metadata = str(event.metadata.get(SESSION_METADATA_KEY, "")or "").strip()
-
-        if from_metadata:
-            return from_metadata
-
-        return f"{event.source}:{event.user_id}"
 
     def resolve_turn_id(self, event: InputEvent, *, session_id: str) -> str:
         """

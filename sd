@@ -1,0 +1,31 @@
+warning: in the working copy of '.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aiagent/evaluation/diagnostics.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aiagent/evaluation/semantic.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aiagent/memory/mem0_memory.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aiagent/orchestrator/session_manager.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'aiagent/services/memory_policy_llm_service.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/routes/voice_realtime.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'config/settings.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/config-reference.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/quality/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/quality/evaluation-adjudication-20261028.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/quality/evaluation-history.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/quality/project-evaluation-implementation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/quality/project-evaluation-workflow.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/v1.2/v1.2-batch-05-code-delivery.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_chat_memory_smoke_regression.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_citation_protocol.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_judge_protocol.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_provider_regression.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_regression_hardening.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_targeted_repairs.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/unit/test_evaluation_visual_channels.py', LF will be replaced by CRLF the next time Git touches it
+aiagent/graphs/memory_graph.py:410: trailing whitespace.
+[32m+[m[41m        [m
+aiagent/memory/mem0_memory.py:226: trailing whitespace.
+[32m+[m[41m    [m
+aiagent/memory/null_memory.py:196: trailing whitespace.
+[32m+[m[41m    [m
+aiagent/memory/null_memory.py:195: new blank line at EOF.
+aiagent/services/memory_policy_llm_service.py:149: trailing whitespace.
+[32m+[m[41m        [m

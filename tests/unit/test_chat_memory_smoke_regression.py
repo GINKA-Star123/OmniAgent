@@ -129,8 +129,12 @@ def test_edit_pin_snapshot_and_delete_do_not_resurrect_old_fact():
     for op, term in (("text_contains", "莲华"), ("text_absent", "亓官墨")):
         assert check_value(snapshot, Check(pointer="/layers", op=op, value=term))
     record = service.list_pinned_records("u1")[0]
-    assert record.memory == record.metadata["memory_hint"] == "用户最喜欢听莲华的歌曲。"
-    assert record.metadata["source"] == "chat_turn"
+    assert record.memory == "用户最喜欢听莲华的歌曲。"
+    assert record.metadata["approval_version"] == "v12-b05"
+    assert record.metadata["source"] == "user_edit"
+    for key in ("memory_hint", "memory_retrieval_query", "policy_reason", "memory_write_reason"):
+        assert key not in record.metadata
+    assert "亓官墨" not in json.dumps(record.model_dump(mode="json"), ensure_ascii=False)
     assert service.delete_all("u1")["status"] == "ok"
     assert service.get_snapshot("u1").total == 0
 

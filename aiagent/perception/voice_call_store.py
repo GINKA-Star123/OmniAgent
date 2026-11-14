@@ -282,7 +282,8 @@ class VoiceRealtimeCallStore:
         error: Exception | str,
         **metadata: Any,
     ) -> VoiceRealtimeCall | None:
-        error_text = str(error)
+        # 此状态会由用户侧 state 接口读回，不持久化 Provider 异常正文。
+        error_text = "voice_turn_failed"
 
         def mutate(call: VoiceRealtimeCall) -> None:
             call.status = VoiceCallStatus.ERROR

@@ -14,7 +14,7 @@ from aiagent.evaluation.adapters import INPUTS, RAG_GENERATION_PROMPT, observe, 
 from aiagent.evaluation.contracts import Dataset, digest, read_json
 from aiagent.evaluation.reporting import PROTOCOL, compare_reports, summarize
 from aiagent.evaluation.scoring import evaluate_one
-from aiagent.evaluation.semantic import Judge, JudgeError
+from aiagent.evaluation.semantic import Judge, JudgeError, minimum_judge_requests
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -79,8 +79,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--judge-max-output-tokens", type=int, default=4096)
     parser.add_argument("--judge-verify-visual-gold", action="store_true",
                         help="Separate pixel review from a second text-only gold review; both share the request budget")
-    parser.add_argument("--judge-thinking", choices=("default", "disabled"), default="default",
-                        help="Explicitly disable thinking only on the official HTTPS DeepSeek judge endpoint")
+    parser.add_argument("--judge-derive-gold-bindings", action="store_true",
+                        help="Diagnostic compact gold decisions; requires split visual review and max repairs 0")
+    parser.add_argument("--judge-thinking", choices=("default", "disabled", "enabled"), default="default",
+                        help="Explicitly control thinking only on the official HTTPS DeepSeek judge endpoint")
     parser.add_argument("--judge-gold-kinds", type=Path,
                         help="Reviewed fact/behavior annotations; defaults to dataset sibling judge-gold-kinds.json")
     parser.add_argument("--debug-local", action="store_true",
@@ -106,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("case IDs must exist within the selected split")
         if args.release and requested_ids:
             raise ValueError("case filtering is diagnostic only and cannot be used with --release")
+        if args.release and args.judge_derive_gold_bindings:
+            raise ValueError("derived gold decisions are diagnostic only and cannot be used with --release")
         eligible = [case for case in eligible if not requested_ids or case.case_id in requested_ids]
         if not eligible:
             raise ValueError("no applicable cases")
@@ -116,17 +120,16 @@ def main(argv: list[str] | None = None) -> int:
         kinds_path = args.judge_gold_kinds or args.dataset.resolve().parent / "judge-gold-kinds.json"
         kinds = read_json(kinds_path) if args.judge_gold_kinds or kinds_path.exists() else {}
         repairs = args.judge_max_repairs if args.judge == "provider" else 0
-        semantic_count = sum(c.oracle.semantic for c in eligible) * args.repeat
         budget = args.judge_request_budget
         if budget is None:
-            visual_count = sum(bool(c.oracle.semantic and (c.kind == "vision_api" or c.inputs.get("image")
-                or any(step.get("image") for step in c.inputs.get("steps", [])))) for c in eligible) * args.repeat
-            reviews = semantic_count + (visual_count if args.judge_verify_visual_gold else 0)
+            reviews = sum(minimum_judge_requests(c, verify_visual_gold=args.judge_verify_visual_gold)
+                          for c in eligible) * args.repeat
             budget = reviews * (1 + repairs) if args.judge == "provider" else 0
         judge = Judge(args.judge, args.manual, max_repairs=repairs, request_budget=budget,
                       gold_kinds=kinds, debug_directory=output / ".judge-debug" if args.debug_local else None,
                       max_output_tokens=args.judge_max_output_tokens, thinking_mode=args.judge_thinking,
-                      verify_visual_gold=args.judge_verify_visual_gold)
+                      verify_visual_gold=args.judge_verify_visual_gold,
+                      derive_gold_bindings=args.judge_derive_gold_bindings)
         report["conditions"] = conditions(dataset, args, judge)
         report["code"] = code_identity()
         patches = read_json(args.overrides) if args.overrides else {}

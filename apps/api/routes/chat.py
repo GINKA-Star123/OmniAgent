@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
+from aiagent.services.generation_errors import GenerationUnavailableError
 from apps.api.response_utils import error_response, ok_response
 from apps.api.shared_state_errors import shared_state_error_response
 from apps.core.runtime_registry import get_runtime, get_runtime_error
@@ -84,6 +85,8 @@ async def chat(req: ChatRequest):
             metadata=packet.metadata,
         )
 
+    except GenerationUnavailableError as exc:
+        return error_response(stage="llm_generation", exc=exc, status_code=503)
     except CloudTimeoutError as exc:
         logger.warning("/chat timed out: %s", exc)
         return JSONResponse(

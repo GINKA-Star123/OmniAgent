@@ -1,0 +1,16 @@
+{
+  "version": "judge-channel-calibration-v1",
+  "status": "agent_reviewed_fixed_references_not_human_accepted",
+  "note": "只执行small版本的4条固定对照；两条错误声明已有用户局部像素确认，正例由代理复核。非heldout、非全套校准、非候选或发布接受。",
+  "visual_groups": [
+    {"group_id": "image-5a93ca83c3b4", "claims": [
+      {"id": "umbrella", "answer": "画面前景有红色的伞。", "expected": "visible"},
+      {"id": "wrong-object", "answer": "前景的巨大红色物体是蘑菇。", "expected": "contradicted"}
+    ]},
+    {"group_id": "image-d91513554e01", "claims": [
+      {"id": "framing", "answer": "画面是人物胸部以上的近景。", "expected": "visible"},
+      {"id": "wrong-fingers", "answer": "画面左下可见一只手的局部和蓝色指甲。", "expected": "contradicted"}
+    ]}
+  ],
+  "persona_cases": []
+}

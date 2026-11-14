@@ -98,7 +98,7 @@ def mark_voice_stage_failed(
         {
             f"voice_{stage}_status": "failed",
             f"voice_{stage}_latency_ms": elapsed_ms(started_at),
-            f"voice_{stage}_error": str(error),
+            f"voice_{stage}_error": "voice_stage_failed",
         },
         **extra,
     )
@@ -123,7 +123,7 @@ def attach_voice_tts_status(
     if tts_status == "failed":
         update["voice_tts_status"] = "failed"
         if packet_metadata.get("tts_error"):
-            update["voice_tts_error"] = packet_metadata["tts_error"]
+            update["voice_tts_error"] = "tts_generation_failed"
     elif tts_status == "skipped":
         update["voice_tts_status"] = "skipped"
         update["voice_tts_skip_reason"] = str(

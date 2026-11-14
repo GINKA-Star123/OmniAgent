@@ -113,7 +113,8 @@ def test_gold_phase_cannot_drop_claims_or_reuse_pixels(tmp_path, monkeypatch, mu
 
 def test_gold_protocol_repair_reuses_visual_result_and_can_remain_low_quality(tmp_path, monkeypatch):
     case, obs, visual, gold = visual_fixture(tmp_path, monkeypatch)
-    broken = dict(gold, claims=[])
+    broken = deepcopy(gold)
+    broken["coverage_assessments"]["object"]["claim_quotes"] = [obs.answer]
     judge, calls = provider(monkeypatch, [response(visual), response(broken), response(gold)],
                             verify_visual_gold=True, request_budget=3)
     result = score(case, obs, judge, "visual@1")

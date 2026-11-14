@@ -224,7 +224,9 @@ def test_voice_call_store_fail_marks_error_state():
         assert call is not None
         assert call.status == VoiceCallStatus.ERROR
         assert call.phase == VoiceTurnPhase.FAILED
-        assert call.last_error == "boom"
+        assert call.last_error == "voice_turn_failed"
+        assert call.metadata["voice_last_error"] == "voice_turn_failed"
+        assert "boom" not in call.model_dump_json()
 
     asyncio.run(run())
 

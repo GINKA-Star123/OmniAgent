@@ -2,37 +2,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+
+from aiagent.state.private_resources import PRIVATE_AUDIO_ROOT, get_private_resources
+from apps.api.shared_state_errors import shared_state_error_response
 
 router = APIRouter()
 
-AUDIO_ROOT = Path("data/cache/tts_real").resolve()
-AUDIO_MEDIA_TYPES = {
-    ".wav": "audio/wav",
-    ".mp3": "audio/mpeg",
-    ".ogg": "audio/ogg",
-}
-ALLOWED_SUFFIXES = set(AUDIO_MEDIA_TYPES)
 
 @router.get("/audio/{filename}")
-def get_audio(filename: str):
-    if "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid audio filename.")
-
-    audio_path = (AUDIO_ROOT / filename).resolve()
-
-    if not str(audio_path).startswith(str(AUDIO_ROOT)):
-        raise HTTPException(status_code=400, detail="Invalid audio path.")
-
-    if audio_path.suffix.lower() not in ALLOWED_SUFFIXES:
-        raise HTTPException(status_code=400, detail="Unsupported audio file type.")
-
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found.")
-
-    return FileResponse(
-        str(audio_path),
-        media_type=AUDIO_MEDIA_TYPES.get(audio_path.suffix.lower(), "application/octet-stream"),
-        filename=audio_path.name,
-    )
+def get_audio(filename: str, request: Request):
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(401, detail={"code": "authentication_required"})
+    if Path(filename).name != filename or "\\" in filename or "%" in filename:
+        raise HTTPException(404, detail={"code": "audio_not_found"})
+    try:
+        resource = get_private_resources().owned("audio", filename, principal.user_id)
+    except Exception as exc:
+        response = shared_state_error_response(exc)
+        if response is not None:
+            return response
+        raise
+    if resource is None:
+        raise HTTPException(404, detail={"code": "audio_not_found"})
+    path = Path(resource.get("path", "")).resolve()
+    if (not path.is_relative_to(PRIVATE_AUDIO_ROOT) or path.name != filename
+            or not path.is_file() or path.suffix.lower() not in {".wav", ".mp3", ".ogg"}):
+        raise HTTPException(404, detail={"code": "audio_not_found"})
+    media_type = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".ogg": "audio/ogg"}[path.suffix.lower()]
+    return FileResponse(path, media_type=media_type,
+                        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})

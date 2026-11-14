@@ -102,4 +102,19 @@ def test_tts_fails_when_all_segments_empty(tmp_path, monkeypatch):
     result = dispatcher.dispatch(packet)
 
     assert result.metadata["tts_status"] == "failed"
-    assert "no usable segments" in result.metadata["tts_error"]
+    assert result.metadata["tts_error"] == "tts_generation_failed"
+
+
+def test_tts_provider_error_does_not_leak_body(tmp_path, monkeypatch, caplog):
+    dispatcher = _dispatcher(tmp_path)
+    canary = "CANARY_PROVIDER_SECRET"
+
+    def fail_synthesis(text):
+        raise RuntimeError(canary)
+
+    monkeypatch.setattr(dispatcher, "_synthesize", fail_synthesis)
+    packet = dispatcher.dispatch(ResponsePacket(reply_text="测试", should_speak=True))
+    assert packet.metadata["tts_error"] == "tts_generation_failed"
+    assert dispatcher.speaking_state.tts_error == "tts_generation_failed"
+    assert canary not in str(packet.metadata)
+    assert canary not in caplog.text

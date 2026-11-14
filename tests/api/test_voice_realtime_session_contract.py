@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from aiagent.orchestrator.session_manager import SessionManager
+from aiagent.schemas.inputs import InputEvent, InputSource
 from tests.helpers.api_contract import assert_json_response, assert_ok_response
 
 
@@ -46,7 +48,9 @@ def test_voice_turn_reports_session_and_turn_id(api_client, test_user, tmp_path)
     metadata = data["metadata"]
     assert metadata["voice_realtime_session_id"] == call_id
     assert metadata["voice_realtime_turn_id"] == f"{call_id}:1"
-    assert metadata["session_id"] == call_id
+    assert metadata["session_id"] == SessionManager().resolve_session_id(InputEvent(
+        source=InputSource.CHAT, user_id=test_user["user_id"], session_id=call_id,
+    ))
     assert metadata["turn_id"] == f"{call_id}:1"
 
 

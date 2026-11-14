@@ -8,7 +8,12 @@ from uuid import uuid4
 
 from PIL import Image
 
-DEFAULT_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+from aiagent.vision.gif_frames import GifInfo, ImageInputError, inspect_gif
+
+DEFAULT_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_EXTENSION_FORMATS = {
+    ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP", ".gif": "GIF",
+}
 
 # 魔数签名 -> 规范格式名。用文件头判断真实类型，而不是相信后缀，
 # 防止把 zip/pdf 改名成 .png 混进视觉链路。
@@ -31,6 +36,7 @@ class StoredImage:
     width: int
     height: int
     format: str
+    gif_info: GifInfo | None = None
 
 
 class ImageStore:
@@ -53,7 +59,7 @@ class ImageStore:
     def save_upload(self, file_obj, filename: str) -> StoredImage:
         suffix = Path(filename or "").suffix.lower()
         if suffix not in self.allowed_extensions:
-            raise ValueError(f"Unsupported image extension: {suffix}")
+            raise ImageInputError(f"Unsupported image extension: {suffix}")
 
         image_id = f"img_{uuid4().hex}"
         target_path = self.upload_dir / f"{image_id}{suffix}"
@@ -70,13 +76,13 @@ class ImageStore:
 
                     total += len(chunk)
                     if total > self.max_bytes:
-                        raise ValueError(f"Image is too large. Max bytes: {self.max_bytes}")
+                        raise ImageInputError(f"Image is too large. Max bytes: {self.max_bytes}")
 
                     hasher.update(chunk)
                     output.write(chunk)
 
             if total < self.min_bytes:
-                raise ValueError(f"Image is too small or empty. Min bytes: {self.min_bytes}")
+                raise ImageInputError(f"Image is too small or empty. Min bytes: {self.min_bytes}")
 
             return self._validate_and_describe(
                 image_id=image_id,
@@ -94,14 +100,14 @@ class ImageStore:
 
         suffix = source.suffix.lower()
         if suffix not in self.allowed_extensions:
-            raise ValueError(f"Unsupported image extension: {suffix}")
+            raise ImageInputError(f"Unsupported image extension: {suffix}")
 
         # 先看体积再拷贝：原来的 read_bytes() 会在超大本地文件上瞬间吃光内存。
         size = source.stat().st_size
         if size > self.max_bytes:
-            raise ValueError(f"Image is too large. Max bytes: {self.max_bytes}")
+            raise ImageInputError(f"Image is too large. Max bytes: {self.max_bytes}")
         if size < self.min_bytes:
-            raise ValueError(f"Image is too small or empty. Min bytes: {self.min_bytes}")
+            raise ImageInputError(f"Image is too small or empty. Min bytes: {self.min_bytes}")
 
         image_id = f"img_{uuid4().hex}"
         target_path = self.upload_dir / f"{image_id}{suffix}"
@@ -122,31 +128,39 @@ class ImageStore:
         try:
             sniffed = sniff_image_format(path)
             if sniffed is None:
-                raise ValueError("Unrecognized image signature.")
+                raise ImageInputError("image_invalid_signature")
+            if _EXTENSION_FORMATS.get(path.suffix.lower()) != sniffed:
+                raise ImageInputError("image_extension_signature_mismatch")
 
-            with Image.open(path) as image:
-                image.verify()
+            gif_info = None
+            if sniffed == "GIF":
+                gif_info = inspect_gif(path)
+                width, height = gif_info.width, gif_info.height
+                image_format = "GIF"
+            else:
+                with Image.open(path) as image:
+                    if image.width * image.height > self.max_pixels:
+                        raise ImageInputError("image_pixels_exceeded")
+                    image.verify()
 
-            with Image.open(path) as image:
-                width, height = image.size
-                image_format = (image.format or path.suffix.lstrip(".")).upper()
+                with Image.open(path) as image:
+                    width, height = image.size
+                    image_format = (image.format or path.suffix.lstrip(".")).upper()
 
             if width <= 0 or height <= 0:
-                raise ValueError("Image has invalid dimensions.")
+                raise ImageInputError("image_invalid_dimensions")
 
             if width * height > self.max_pixels:
-                raise ValueError(
-                    f"Image resolution is too large. Max pixels: {self.max_pixels}, got {width}x{height}"
-                )
+                raise ImageInputError("image_pixels_exceeded")
 
             if image_format != sniffed:
-                raise ValueError(
-                    "Image content does not match its signature: "
-                    f"signature={sniffed}, decoded={image_format}"
-                )
+                raise ImageInputError("image_decoded_format_mismatch")
+        except ImageInputError:
+            path.unlink(missing_ok=True)
+            raise
         except Exception as exc:
             path.unlink(missing_ok=True)
-            raise ValueError(f"Invalid image file: {exc}") from exc
+            raise ImageInputError("image_decode_failed") from exc
 
         return StoredImage(
             image_id=image_id,
@@ -155,6 +169,7 @@ class ImageStore:
             width=width,
             height=height,
             format=image_format,
+            gif_info=gif_info,
         )
 
 

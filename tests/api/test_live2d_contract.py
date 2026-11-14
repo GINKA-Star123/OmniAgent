@@ -7,8 +7,8 @@ from tests.helpers.api_contract import (
 )
 
 
-def test_live2d_stats_contract(api_client):
-    response = api_client.get("/live2d/stats")
+def test_live2d_stats_contract(api_client, admin_headers):
+    response = api_client.get("/live2d/stats", headers=admin_headers)
     data = assert_json_response(response)
 
     assert_ok_response(data)
@@ -16,9 +16,10 @@ def test_live2d_stats_contract(api_client):
     assert isinstance(data["stats"], dict)
 
 
-def test_live2d_preview_contract(api_client):
+def test_live2d_preview_contract(api_client, admin_headers):
     response = api_client.post(
         "/live2d/preview",
+        headers=admin_headers,
         json={
             "character_id": "yzl",
             "emotion": "calm",
@@ -47,8 +48,8 @@ def test_live2d_preview_contract(api_client):
     assert "background_file" in payload["scene"]
 
 
-def test_live2d_runtime_status_contract(api_client):
-    response = api_client.get("/live2d/runtime/status")
+def test_live2d_runtime_status_contract(api_client, admin_headers):
+    response = api_client.get("/live2d/runtime/status", headers=admin_headers)
     data = assert_json_response(response)
 
     assert_ok_response(data)

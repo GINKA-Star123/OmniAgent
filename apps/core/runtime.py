@@ -469,34 +469,9 @@ class CoreRuntime:
 
 
     def delete_user_memory_item(self, user_id: str, memory_id: str) -> dict:
-        records = self.long_term_memory.list_records(
-            user_id=user_id,
-            limit=1000,
+        return self.long_term_memory.delete_memory(
+            memory_id, user_id=user_id, agent_id=self.memory_runner.default_agent_id,
         )
-
-        owned = any(
-            getattr(record, "id", "") == memory_id
-            for record in records
-        )
-
-        if not owned:
-            return {
-                "ok": False,
-                "status": "not_found",
-                "user_id": user_id,
-                "memory_id": memory_id,
-                "reason": "memory_not_found_or_not_owned_by_user",
-            }
-
-        result = self.long_term_memory.delete_memory(memory_id)
-        return {
-            "ok": True,
-            "status": "deleted",
-            "user_id": user_id,
-            "memory_id": memory_id,
-            "result": result,
-        }
-
 
     def delete_user_memory_layer(self, user_id: str, layer: str) -> dict:
         return self.long_term_memory.delete_layer(

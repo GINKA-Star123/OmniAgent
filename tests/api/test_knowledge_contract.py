@@ -4,9 +4,10 @@ from __future__ import annotations
 from tests.helpers.api_contract import assert_json_response, assert_ok_response
 
 
-def test_knowledge_search_contract(api_client):
+def test_knowledge_search_contract(api_client, admin_headers):
     response = api_client.post(
         "/knowledge/search",
+        headers=admin_headers,
         json={
             "query": "乐正绫是谁",
             "top_k": 2,

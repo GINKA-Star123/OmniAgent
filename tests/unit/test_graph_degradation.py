@@ -109,7 +109,7 @@ def test_memory_retrieve_node_records_memory_error():
     assert result["memory_hits"] == []
     assert result["memory_prompt_context"] == "无长期记忆。"
     assert result["metadata"]["memory_retrieve_status"] == "failed"
-    assert "mem0 unavailable" in result["metadata"]["memory_error"]
+    assert result["metadata"]["memory_error"] == "memory_retrieve_failed"
 
 
 def test_memory_retrieve_before_reply_degrades_when_node_raises(monkeypatch):
@@ -125,7 +125,7 @@ def test_memory_retrieve_before_reply_degrades_when_node_raises(monkeypatch):
 
     assert result["memory_hits"] == []
     assert result["memory_prompt_context"] == "无长期记忆。"
-    assert "retrieve exploded" in result["metadata"]["memory_error"]
+    assert result["metadata"]["memory_error"] == "memory_retrieve_failed"
 
 
 def test_memory_guard_write_degrades_on_plan_error():
@@ -135,16 +135,17 @@ def test_memory_guard_write_degrades_on_plan_error():
 
     result = runner._guard_write_node(state)
 
-    assert result["memory_store_plan"] is None
+    assert result["memory_store_plan"].status == "blocked"
+    assert result["memory_store_plan"].reason == "approval_failed"
+    assert result["approved_write"] is None
     assert result["metadata"]["memory_guard_write_status"] == "failed"
-    assert "intake failed" in result["metadata"]["memory_error"]
     assert runner._route_after_guard(result) == "end"
 
 
 def test_memory_run_after_reply_degrades_when_graph_invoke_fails(monkeypatch):
     runner = MemoryRunner(memory=_FailingMemory(), policy_service=None)
     runner.preference_store = _EnabledPreferences()
-    monkeypatch.setattr(runner, "graph", _FailingGraph())
+    monkeypatch.setattr(runner, "prepare_graph", _FailingGraph())
 
     result = runner.run_after_reply(
         user_id="u1",
@@ -158,12 +159,13 @@ def test_memory_run_after_reply_degrades_when_graph_invoke_fails(monkeypatch):
     )
 
     assert result["store_result"]["ok"] is False
-    assert result["store_result"]["status"] == "degraded"
-    assert result["metadata"]["memory_store_status"] == "failed"
-    assert "graph invoke failed" in result["metadata"]["memory_error"]
+    assert result["store_result"]["status"] == "failed"
+    assert result["store_result"]["reason"] == "memory_prepare_failed"
+    assert result["metadata"]["memory_write_status"] == "failed"
+    assert result["metadata"]["memory_write_async"] is False
 
 
-def test_memory_store_node_records_memory_error():
+def test_memory_store_node_blocks_plan_without_approved_payload():
     runner = MemoryRunner(memory=_FailingMemory(), policy_service=None)
 
     decision = MemoryWriteDecision(
@@ -198,14 +200,8 @@ def test_memory_store_node_records_memory_error():
     )
 
     assert result["store_result"]["ok"] is False
-    assert result["store_result"]["status"] == "failed"
-    assert "mem0 unavailable" in result["metadata"]["memory_error"]
-
-    # 顺带守住 _store_node 回填的元数据（这些键在失败路径也必须存在）
-    assert result["metadata"]["memory_store_status"] == "failed"
-    assert result["metadata"]["category"] == "preference"
-    assert result["metadata"]["memory_layer"] == "preference"
-    assert result["metadata"]["memory_guard_status"] == "approved"
+    assert result["store_result"]["status"] == "blocked"
+    assert result["store_result"]["reason"] == "approval_invalid"
 
 def test_build_degraded_rag_result_handles_none_metadata():
     result = build_degraded_rag_result(metadata=None)

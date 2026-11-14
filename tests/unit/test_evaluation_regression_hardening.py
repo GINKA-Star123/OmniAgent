@@ -44,17 +44,16 @@ def test_claim_cannot_simultaneously_be_noncorrect_and_cover_gold(monkeypatch, t
     assert result.metrics == {} and len(calls) == 1
 
 
-def test_coverage_binding_protocol_repair_can_lower_score_without_quality_retry(monkeypatch):
+def test_coverage_decision_change_requires_review_even_when_lowering_score(monkeypatch):
     bad = verdict()
     bad["claims"][0]["truth"] = "unverifiable"
     good = deepcopy(bad)
     good.update(covered_gold_ids=[], coverage_claims={})
     judge, calls = provider(monkeypatch, [response(bad), response(good)], request_budget=2)
     result = score(semantic_case(), observation(), judge, "coverage@1")
-    assert result.status == "failed"
-    assert result.metrics["gold_coverage"] == 0
-    assert result.metrics["fact_unverifiable_rate"] == 1
-    assert [item.code for item in result.judge_diagnostics] == ["coverage_claim_not_correct", "ok"]
+    assert result.status == "judge_error" and result.error_code == "repair_semantics_changed"
+    assert result.metrics == {}
+    assert [item.code for item in result.judge_diagnostics] == ["coverage_claim_not_correct", "repair_semantics_changed"]
     assert len(calls) == 2 and judge.usage["repair_requests"] == 1
     assert "coverage_claims" in calls[-1][-1]["content"]
 

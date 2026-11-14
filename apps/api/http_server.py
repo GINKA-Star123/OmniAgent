@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from starlette.staticfiles import StaticFiles
 
 from aiagent.perception.voice_call_store import (
     VoiceCallStoreConflictError,
     VoiceCallStoreUnavailableError,
+)
+from aiagent.state.shared_state import (
+    SharedStateConflictError,
+    SharedStateOwnershipError,
+    SharedStateUnavailableError,
 )
 from apps.api.exception_handlers import (
     http_exception_handler,
@@ -34,20 +37,39 @@ from apps.api.routes.knowledge import router as knowledge_router
 from apps.api.routes.live2d import router as live2d_router
 from apps.api.routes.memory import router as memory_router
 from apps.api.routes.multimodal_chat import router as multimodal_chat_router
+from apps.api.routes.private_files import router as private_files_router
 from apps.api.routes.session import router as session_router
+from apps.api.routes.telemetry import router as telemetry_router
 from apps.api.routes.vision import router as vision_router
 from apps.api.routes.voice import router as voice_router
 from apps.api.routes.voice_realtime import router as voice_realtime_router
+from apps.api.shared_state_errors import shared_state_error_response
+from apps.api.user_auth import enforce_http_policy, validate_auth_config
 from cloud.config import cloud_settings
 from cloud.middleware import cloud_guard_middleware
 from config.settings import settings
 
 logger = logging.getLogger("aiagent.api")
 
-app = FastAPI(title="aiagent api", version="1.0.0")
+app = FastAPI(
+    title="aiagent api", version="1.0.0",
+    dependencies=[Depends(enforce_http_policy)],
+    docs_url=None, redoc_url=None, openapi_url=None,
+)
 
 app.add_exception_handler(HTTPException, http_exception_handler) #type: ignore
 app.add_exception_handler(RequestValidationError, validation_exception_handler) #type: ignore
+
+
+async def shared_state_exception_handler(request: Request, exc: Exception) -> Response:
+    response = shared_state_error_response(exc)
+    assert response is not None
+    return response
+
+
+for error_type in (SharedStateConflictError, SharedStateOwnershipError, SharedStateUnavailableError):
+    app.add_exception_handler(error_type, shared_state_exception_handler)
+
 app.middleware("http")(cloud_guard_middleware)
 app.middleware("http")(request_logging_middleware)
 
@@ -68,15 +90,6 @@ app.add_middleware(
     max_age=600,
 )
 
-if cloud_settings.storage_provider.lower() == "local":
-    storage_root = Path(cloud_settings.local_storage_root)
-    storage_root.mkdir(parents=True, exist_ok=True)
-    app.mount(
-        "/cloud-files",
-        StaticFiles(directory=str(storage_root)),
-        name="cloud-files",
-    )
-
 app.include_router(health_router)
 app.include_router(dashboard_router)
 app.include_router(cloud_router)
@@ -95,10 +108,13 @@ app.include_router(voice_realtime_router)
 app.include_router(audio_router)
 app.include_router(live2d_router)
 app.include_router(session_router)
+app.include_router(telemetry_router)
+app.include_router(private_files_router)
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    validate_auth_config()
     logger.info(
         (
             "API server started "
