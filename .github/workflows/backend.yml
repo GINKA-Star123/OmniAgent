@@ -17,7 +17,24 @@ jobs:
         timeout-minutes: 5
         run: |
           sudo apt-get -o Acquire::Retries=3 -o APT::Update::Error-Mode=any update
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libportaudio2
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libportaudio2 pulseaudio pulseaudio-utils
+      - name: Start headless PulseAudio server
+        timeout-minutes: 1
+        run: |
+          pulse_dir="$RUNNER_TEMP/aiagent-pulse"
+          export PULSE_SERVER="unix:$pulse_dir/native"
+          printf 'PULSE_SERVER=%s\n' "$PULSE_SERVER" >> "$GITHUB_ENV"
+          install -d -m 700 "$pulse_dir"
+          # A private Unix socket and null sink avoid physical audio and session D-Bus dependencies.
+          pulseaudio --daemonize=yes --exit-idle-time=-1 --disable-shm=yes \
+            --use-pid-file=no --log-target=stderr -n \
+            --load="module-native-protocol-unix socket=$pulse_dir/native auth-anonymous=0" \
+            --load="module-null-sink sink_name=ci_null rate=48000 channels=2"
+          pactl info
+          pactl set-default-sink ci_null
+          pactl set-default-source ci_null.monitor
+          pactl list short sinks
+          pactl list short sources
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.8"
