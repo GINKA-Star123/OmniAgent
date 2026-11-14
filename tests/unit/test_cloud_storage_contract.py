@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from cloud.config import cloud_settings
 from cloud.object_storage import reset_object_store_for_tests
 from tests.helpers.api_contract import (
@@ -11,8 +13,8 @@ from tests.helpers.api_contract import (
 )
 
 
-def test_cloud_ready_contract(api_client):
-    response = api_client.get("/cloud/ready")
+def test_cloud_ready_contract(api_client, admin_headers):
+    response = api_client.get("/cloud/ready", headers=admin_headers)
     data = assert_json_response(response)
 
     assert_ok_response(data)
@@ -26,8 +28,8 @@ def test_cloud_ready_contract(api_client):
     assert "bucket_configured" in data["storage"]
 
 
-def test_cloud_limits_contract(api_client):
-    response = api_client.get("/cloud/limits")
+def test_cloud_limits_contract(api_client, admin_headers):
+    response = api_client.get("/cloud/limits", headers=admin_headers)
     data = assert_json_response(response)
 
     assert_ok_response(data)
@@ -51,7 +53,7 @@ def test_cloud_limits_contract(api_client):
         assert field in limits
 
 
-def test_direct_upload_contract(api_client, monkeypatch, tmp_path: Path):
+def test_direct_upload_contract(api_client, admin_headers, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         cloud_settings,
         "local_storage_root",
@@ -72,6 +74,7 @@ def test_direct_upload_contract(api_client, monkeypatch, tmp_path: Path):
 
     response = api_client.post(
         "/cloud/storage/upload",
+        headers=admin_headers,
         data={"prefix": "contract-tests"},
         files={
             "file": (
@@ -104,6 +107,7 @@ def test_direct_upload_contract(api_client, monkeypatch, tmp_path: Path):
 
 def test_direct_upload_size_limit_contract(
     api_client,
+    admin_headers,
     monkeypatch,
     tmp_path: Path,
 ):
@@ -127,6 +131,7 @@ def test_direct_upload_size_limit_contract(
 
     response = api_client.post(
         "/cloud/storage/upload",
+        headers=admin_headers,
         files={
             "file": (
                 "too-large.txt",
@@ -150,6 +155,7 @@ def test_direct_upload_size_limit_contract(
 
 def test_presign_upload_is_unsupported_for_local_storage(
     api_client,
+    admin_headers,
     monkeypatch,
     tmp_path: Path,
 ):
@@ -168,6 +174,7 @@ def test_presign_upload_is_unsupported_for_local_storage(
 
     response = api_client.post(
         "/cloud/storage/presign-upload",
+        headers=admin_headers,
         json={
             "filename": "avatar.png",
             "content_type": "image/png",
@@ -187,9 +194,10 @@ def test_presign_upload_is_unsupported_for_local_storage(
     reset_object_store_for_tests()
 
 
-def test_presign_upload_validation_contract(api_client):
+def test_presign_upload_validation_contract(api_client, admin_headers):
     response = api_client.post(
         "/cloud/storage/presign-upload",
+        headers=admin_headers,
         json={
             "filename": "",
             "content_type": "image/png",
@@ -204,3 +212,41 @@ def test_presign_upload_validation_contract(api_client):
     assert data["stage"] == "cloud_validation"
     assert isinstance(data["error"], str)
     assert isinstance(data.get("request_id", ""), str)
+
+
+@pytest.mark.parametrize("credential", ["missing", "user", "wrong-admin"])
+@pytest.mark.parametrize("method,path,kwargs", [
+    pytest.param("GET", "/cloud/ready", {}, id="ready"),
+    pytest.param("GET", "/cloud/limits", {}, id="limits"),
+    pytest.param("POST", "/cloud/storage/upload", {
+        "files": {"file": ("blocked.txt", b"must-not-be-written", "text/plain")},
+    }, id="upload"),
+    pytest.param("POST", "/cloud/storage/presign-upload", {
+        "json": {"filename": "blocked.png", "content_type": "image/png"},
+    }, id="presign"),
+    pytest.param("POST", "/cloud/storage/presign-upload", {
+        "json": {"filename": ""},
+    }, id="presign-invalid-body"),
+])
+def test_cloud_management_requires_admin_before_storage_or_validation(
+    api_client, admin_headers, auth_headers, monkeypatch, credential, method, path, kwargs,
+):
+    from unittest.mock import AsyncMock, Mock
+
+    from apps.api.routes import cloud
+
+    store = Mock(side_effect=AssertionError("unauthorized_storage_access"))
+    health = AsyncMock(side_effect=AssertionError("unauthorized_redis_access"))
+    monkeypatch.setattr(cloud, "get_object_store", store)
+    monkeypatch.setattr(cloud, "redis_health", health)
+
+    headers = {
+        "missing": {},
+        "user": auth_headers("test-user"),
+        "wrong-admin": {"X-Cloud-Admin-Token": "synthetic-wrong-admin-token"},
+    }[credential]
+    response = api_client.request(method, path, headers=headers, **kwargs)
+    data = assert_json_response(response, expected_status=403)
+    assert_error_response(data, stage="cloud_admin_auth")
+    store.assert_not_called()
+    health.assert_not_awaited()

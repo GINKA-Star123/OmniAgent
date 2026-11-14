@@ -13,11 +13,21 @@ def clean_credentials(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-def test_auth_settings_fail_closed_and_hide_verifiers():
+def test_auth_settings_fail_closed_and_hide_verifiers(monkeypatch):
+    # _env_file=None disables dotenv loading, not the process environment set by conftest.
+    monkeypatch.delenv("API_AUTH_MODE", raising=False)
     settings = Settings(_env_file=None, API_AUTH_TOKEN_SHA256_MAP='{"private-verifier":"eval-a"}')
+    assert Settings.model_fields["api_auth_mode"].default == "bearer"
     assert settings.api_auth_mode == "bearer"
     assert "api_auth_token_sha256_map" not in settings.model_dump()
     assert "private-verifier" not in repr(settings)
+
+
+@pytest.mark.parametrize("mode", ["bearer", "local-dev"])
+def test_auth_settings_respect_explicit_environment_override(monkeypatch, mode):
+    monkeypatch.setenv("API_AUTH_MODE", mode)
+    settings = Settings(_env_file=None)
+    assert settings.api_auth_mode == mode
 
 
 def test_single_token_must_match_exact_principal(monkeypatch):
