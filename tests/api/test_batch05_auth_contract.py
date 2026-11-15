@@ -78,6 +78,36 @@ def test_unauthenticated_response_preserves_bearer_challenge(secured):
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
     assert response.json()["code"] == "authentication_required"
+    secured.runtime.handle_chat_full.assert_not_called()
+
+
+@pytest.mark.parametrize("credential_headers", [
+    pytest.param({"Authorization": ""}, id="empty"),
+    pytest.param({"Authorization": "Bearer short"}, id="malformed"),
+    pytest.param({"Authorization": f"Bearer {'Z' * 43}"}, id="unknown"),
+    pytest.param([
+        ("Authorization", f"Bearer {TOKEN_A}"),
+        ("Authorization", f"Bearer {TOKEN_B}"),
+    ], id="duplicate"),
+])
+def test_invalid_credentials_preserve_challenge_and_never_enter_runtime(secured, credential_headers):
+    response = secured.client.post(
+        "/chat", headers=credential_headers, json={"user_id": "u1", "text": "测试"},
+    )
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json()["code"] == "invalid_credentials"
+    secured.runtime.handle_chat_full.assert_not_called()
+
+
+def test_chat_does_not_accept_audio_query_token(secured):
+    response = secured.client.post(
+        "/chat", params={"access_token": TOKEN_A}, json={"user_id": "u1", "text": "测试"},
+    )
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.json()["code"] == "authentication_required"
+    secured.runtime.handle_chat_full.assert_not_called()
 
 
 def test_validation_does_not_echo_invalid_input(secured):

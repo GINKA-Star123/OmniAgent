@@ -29,9 +29,9 @@ def plan(text="用户喜欢茶。"):
     )
 
 
-def request(headers=()):
-    return Request({"type": "http", "method": "GET", "path": "/probe",
-                    "headers": list(headers), "query_string": b"", "server": ("test", 80)})
+def request(headers=(), *, path="/probe", query_string=b""):
+    return Request({"type": "http", "method": "GET", "path": path,
+                    "headers": list(headers), "query_string": query_string, "server": ("test", 80)})
 
 
 @pytest.fixture
@@ -91,16 +91,51 @@ def test_bearer_principal_ignores_forged_user_header(auth):
     assert principal.user_id == "u1"
 
 
-@pytest.mark.parametrize("headers", [
-    [], [(b"x-user-id", b"u1")], [(b"authorization", b"Bearer short")],
-    [(b"authorization", f"Bearer {'Z' * 43}".encode())],
-    [(b"authorization", f"Bearer {TOKEN_A}".encode()),
-     (b"authorization", f"Bearer {TOKEN_B}".encode())],
+@pytest.mark.parametrize("headers,expected_code", [
+    ([], "authentication_required"),
+    ([(b"x-user-id", b"u1")], "authentication_required"),
+    ([(b"authorization", b"")], "invalid_credentials"),
+    ([(b"authorization", b"Bearer short")], "invalid_credentials"),
+    ([(b"authorization", f"Bearer {'Z' * 43}".encode())], "invalid_credentials"),
+    ([(b"authorization", f"Bearer {TOKEN_A}".encode()),
+      (b"authorization", f"Bearer {TOKEN_B}".encode())], "invalid_credentials"),
 ])
-def test_missing_wrong_or_duplicate_credentials_fail(auth, headers):
+def test_missing_wrong_or_duplicate_credentials_fail(auth, headers, expected_code):
     with pytest.raises(HTTPException) as error:
         auth.authenticate(request(headers))
     assert error.value.status_code == 401
+    assert error.value.detail == {"code": expected_code}
+    assert error.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_audio_query_token_authenticates_without_header(auth):
+    principal = auth.authenticate(request(
+        path="/audio/fixture.wav", query_string=f"access_token={TOKEN_A}".encode(),
+    ))
+    assert principal.user_id == "u1"
+    assert principal.source == "bearer"
+
+
+@pytest.mark.parametrize("path,headers,query,expected_code", [
+    pytest.param("/audio/fixture.wav", [], b"", "authentication_required", id="audio-missing"),
+    pytest.param("/audio/fixture.wav", [], b"access_token=short", "invalid_credentials", id="audio-short"),
+    pytest.param("/audio/fixture.wav", [], f"access_token={'Z' * 43}".encode(),
+                 "invalid_credentials", id="audio-unknown"),
+    pytest.param("/chat", [], f"access_token={TOKEN_A}".encode(),
+                 "authentication_required", id="chat-query-forbidden"),
+    pytest.param("/audio/fixture.wav", [(b"authorization", b"Bearer short")],
+                 f"access_token={TOKEN_A}".encode(), "invalid_credentials", id="bad-header-no-query-fallback"),
+    pytest.param("/audio/fixture.wav", [
+        (b"authorization", f"Bearer {TOKEN_A}".encode()),
+        (b"authorization", f"Bearer {TOKEN_B}".encode()),
+    ], f"access_token={TOKEN_A}".encode(), "invalid_credentials", id="duplicate-header-no-query-fallback"),
+])
+def test_audio_query_fallback_preserves_authentication_boundaries(auth, path, headers, query, expected_code):
+    with pytest.raises(HTTPException) as error:
+        auth.authenticate(request(headers, path=path, query_string=query))
+    assert error.value.status_code == 401
+    assert error.value.detail == {"code": expected_code}
+    assert error.value.headers == {"WWW-Authenticate": "Bearer"}
 
 
 def test_local_dev_is_fixed_and_forbidden_in_production(auth, monkeypatch):

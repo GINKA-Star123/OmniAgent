@@ -103,13 +103,17 @@ def authenticate(request: Request) -> Principal:
         return Principal(settings.api_local_principal, "local-dev")
     authorization = request.headers.getlist("authorization")
     token_value = ""
-    if len(authorization) == 1:
+    if not authorization:
+        if request.url.path.startswith("/audio/"):
+            # 手机端播放器无法自定义请求头，仅音频资源允许 query 传令牌。
+            token_value = request.query_params.get("access_token", "")
+        if not token_value:
+            raise HTTPException(401, detail={"code": "authentication_required"},
+                                headers={"WWW-Authenticate": "Bearer"})
+    elif len(authorization) == 1:
         pieces = authorization[0].split(" ")
         if len(pieces) == 2 and pieces[0].lower() == "bearer":
             token_value = pieces[1]
-    elif not authorization and request.url.path.startswith("/audio/"):
-        # 手机端播放器无法自定义请求头，仅音频资源允许 query 传令牌。
-        token_value = request.query_params.get("access_token", "")
     if not token_value or not _TOKEN.fullmatch(token_value):
         raise HTTPException(401, detail={"code": "invalid_credentials"},
                             headers={"WWW-Authenticate": "Bearer"})
