@@ -699,6 +699,12 @@ Copy-Item cloud.tencent.example.env cloud.tencent.env
 | `API_AUTH_MODE` | bearer | bearer 或 local-dev；生产/cloud 禁止 local-dev |
 | `API_LOCAL_PRINCIPAL` | local-user | 仅显式本地开发模式使用的固定主体 |
 | `API_AUTH_TOKEN_SHA256_MAP` | {} | 高熵 Bearer Token 的 SHA-256 到稳定主体的 JSON 映射；空映射不能启动 bearer 服务 |
+| `AUTH_STORE_PATH` | data/auth/auth_store.json | 注册/登录/游客账号与动态 token 的存储文件（单 Worker 内测用） |
+| `AUTH_TOKEN_TTL_HOURS` | 720 | 注册/登录 token 有效期（小时） |
+| `AUTH_GUEST_TOKEN_TTL_HOURS` | 168 | 游客 token 有效期（小时） |
+| `AUTH_REGISTRATION_ENABLED` | false | 是否允许 `/auth/register`；正式环境建议关闭 |
+| `AUTH_GUEST_ENABLED` | false | 是否允许 `/auth/guest` 免注册身份 |
+| `AUTH_INVITE_CODE` | 空 | 非空时注册必须携带匹配的邀请码 |
 | `MEMORY_ENABLE_GRAPH` | false | 第五批仅验证无推断向量写入；图模式暂不可用 |
 | `MEM0_TELEMETRY` | false（模板） | Mem0 SDK 读取的真实进程环境变量；必须在首次导入 SDK 前导出，单独让 Settings 读取 `.env` 不代表已生效 |
 | `ENABLE_LOCAL_AUDIO_PLAYBACK` | false | Bearer 多用户 HTTP 服务禁止共享本机播放 |

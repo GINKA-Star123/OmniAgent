@@ -22,7 +22,7 @@ async def session_open(req: SessionOpenRequest):
     except Exception:
         logger.exception("/session/open failed")
 
-        fallback_text = "你来了。我刚刚在待机，现在可以开始。"
+        fallback_text = "来啦，想说什么就说。"
 
         return ok_response(
             degraded=True,

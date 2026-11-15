@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -33,15 +34,20 @@ class PersonaGuard:
         result = original.strip()
         reasons: list[str] = []
 
-        for phrase in self.forbidden_phrases:
-            if phrase in result:
-                result = result.replace(phrase, "阿绫")
-                reasons.append(f"removed_forbidden:{phrase}")
+        # 只去掉句首无关的身份套话，不改写身份事实、引用、代码和技术解释。
+        # 原先全局替换会把“我是人工智能”改成“阿绫”，也会破坏正文中的“以下是”。
+        boilerplate = re.match(
+            r"^(?:作为一个AI|作为AI|作为语言模型|作为助手)[，,：:]\s*",
+            result,
+        )
+        if boilerplate and result[boilerplate.end():].strip():
+            result = result[boilerplate.end():]
+            reasons.append(f"removed_forbidden:{boilerplate.group().rstrip('，,：: ')}")
 
-        for phrase in self.cold_phrases:
-            if phrase in result:
-                result = result.replace(phrase, "")
-                reasons.append(f"softened_cold_phrase:{phrase}")
+        greeting = "用户您好，很高兴为您服务。"
+        if result.startswith(greeting) and result[len(greeting):].strip():
+            result = result[len(greeting):].lstrip()
+            reasons.append("softened_cold_phrase:service_greeting")
 
         result = self._trim_repeated_prefix(result)
 
@@ -65,13 +71,12 @@ class PersonaGuard:
         result = text or ""
         issues: list[str] = []
 
-        for phrase in self.forbidden_phrases:
-            if phrase in result:
-                issues.append(f"forbidden_phrase:{phrase}")
+        boilerplate = re.match(r"^(?:作为一个AI|作为AI|作为语言模型|作为助手)[，,：:]", result.strip())
+        if boilerplate:
+            issues.append(f"forbidden_phrase:{boilerplate.group().rstrip('，,：:')}")
 
-        for phrase in self.cold_phrases:
-            if phrase in result:
-                issues.append(f"cold_phrase:{phrase}")
+        if result.strip().startswith(("用户您好", "很高兴为您服务")):
+            issues.append("cold_phrase:service_greeting")
 
         if not result.strip():
             issues.append("empty_reply")

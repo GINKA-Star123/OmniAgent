@@ -24,6 +24,7 @@ from apps.api.http_security import build_cors_policy
 from apps.api.middleware import request_logging_middleware
 from apps.api.response_utils import error_message_response
 from apps.api.routes.audio import router as audio_router
+from apps.api.routes.auth import router as auth_router
 from apps.api.routes.chat import router as chat_router
 from apps.api.routes.cloud import router as cloud_router
 from apps.api.routes.cloud_gpu import router as cloud_gpu_router
@@ -106,6 +107,7 @@ app.include_router(vision_router)
 app.include_router(voice_router)
 app.include_router(voice_realtime_router)
 app.include_router(audio_router)
+app.include_router(auth_router)
 app.include_router(live2d_router)
 app.include_router(session_router)
 app.include_router(telemetry_router)

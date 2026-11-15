@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import hashlib
 import json
 import re
@@ -43,6 +44,11 @@ def main() -> int:
     parser.add_argument("--count", type=int, default=50)
     parser.add_argument("--base-urls", action="append", required=True, help="可多次传入，第一个为主入口")
     parser.add_argument("--prefix", default="tester")
+    parser.add_argument(
+        "--reuse-from",
+        default="",
+        help="复用已有 activation_codes.csv 的 token/user_id/username，只更新服务入口（不换身份）",
+    )
     parser.add_argument("--out-dir", default=str(Path("data") / "private" / "activation"))
     args = parser.parse_args()
 
@@ -57,26 +63,54 @@ def main() -> int:
 
     rows: list[dict[str, str]] = []
     token_map: dict[str, str] = {}
-    for index in range(1, args.count + 1):
-        user_id = f"{args.prefix}-{index:03d}"
-        username = f"测试用户{index:02d}"
-        token = secrets.token_urlsafe(32)
-        if not TOKEN_RE.fullmatch(token):
-            raise SystemExit("生成的 token 不符合后端格式要求")
-        digest = hashlib.sha256(token.encode("ascii")).hexdigest()
-        token_map[digest] = user_id
-        rows.append(
-            {
-                "user_id": user_id,
-                "username": username,
-                "token": token,
-                "activation_code": encode_activation(base_urls, token, user_id, username),
-            }
-        )
+
+    if args.reuse_from:
+        reuse_path = Path(args.reuse_from)
+        if not reuse_path.exists():
+            raise SystemExit(f"复用文件不存在：{reuse_path}")
+        with reuse_path.open(encoding="utf-8-sig", newline="") as handle:
+            for item in csv.DictReader(handle):
+                token = str(item.get("token") or "").strip()
+                user_id = str(item.get("user_id") or "").strip()
+                username = str(item.get("username") or "").strip() or user_id
+                if not TOKEN_RE.fullmatch(token) or not user_id:
+                    raise SystemExit(f"复用文件行无效：{item}")
+                token_map[hashlib.sha256(token.encode("ascii")).hexdigest()] = user_id
+                rows.append(
+                    {
+                        "user_id": user_id,
+                        "username": username,
+                        "token": token,
+                        "activation_code": encode_activation(
+                            base_urls, token, user_id, username
+                        ),
+                    }
+                )
+        if not rows:
+            raise SystemExit("复用文件为空")
+    else:
+        for index in range(1, args.count + 1):
+            user_id = f"{args.prefix}-{index:03d}"
+            username = f"测试用户{index:02d}"
+            token = secrets.token_urlsafe(32)
+            if not TOKEN_RE.fullmatch(token):
+                raise SystemExit("生成的 token 不符合后端格式要求")
+            digest = hashlib.sha256(token.encode("ascii")).hexdigest()
+            token_map[digest] = user_id
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "username": username,
+                    "token": token,
+                    "activation_code": encode_activation(
+                        base_urls, token, user_id, username
+                    ),
+                }
+            )
 
     csv_path = out_dir / "activation_codes.csv"
     with csv_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = __import__("csv").DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
 

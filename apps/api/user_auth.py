@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException, Request
 
 from aiagent.memory.approved_write import checked_id
+from apps.api.auth_store import get_auth_store
 from cloud.admin_auth import require_cloud_admin
 from cloud.config import cloud_settings
 from config.settings import settings
@@ -27,10 +28,12 @@ _CALL_INPUTS = {
     ("GET", "/voice/realtime/state/{call_id}"),
 }
 _USER_READS = {("POST", "/voice/transcribe"), ("GET", "/vision/schema"),
-               ("GET", "/audio/{filename}")}
+               ("GET", "/audio/{filename}"), ("GET", "/auth/me")}
 # 遥测上报：只要求有效凭据，body 里没有 user_id 字段。
 _USER_EVENTS = {("POST", "/telemetry/batch")}
-_PUBLIC = {("GET", "/"), ("GET", "/live"), ("GET", "/health"), ("GET", "/ready")}
+_PUBLIC = {("GET", "/"), ("GET", "/live"), ("GET", "/health"), ("GET", "/ready"),
+           ("POST", "/auth/register"), ("POST", "/auth/login"),
+           ("POST", "/auth/guest")}
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,18 +42,26 @@ class Principal:
     source: str
 
 
-def token_map() -> dict[str, str]:
+def _static_token_map() -> dict[str, str]:
+    """读取 .env 里预置的静态 token 映射（可为空）。"""
     try:
         mapping = json.loads(settings.api_auth_token_sha256_map)
-        if not isinstance(mapping, dict) or not mapping:
-            raise ValueError()
-        for digest, user_id in mapping.items():
-            if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
-                raise ValueError()
-            checked_id(user_id)
-        return mapping
     except (ValueError, TypeError):
         raise RuntimeError("api_auth_configuration_invalid") from None
+    if not isinstance(mapping, dict):
+        raise RuntimeError("api_auth_configuration_invalid") from None
+    for digest, user_id in mapping.items():
+        if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+            raise RuntimeError("api_auth_configuration_invalid") from None
+        checked_id(user_id)
+    return mapping
+
+
+def token_map() -> dict[str, str]:
+    """静态映射 + 注册/登录/游客动态签发的 token，合并生效。"""
+    merged = dict(_static_token_map())
+    merged.update(get_auth_store().token_map())
+    return merged
 
 
 def validate_auth_config() -> None:
@@ -63,7 +74,15 @@ def validate_auth_config() -> None:
             raise RuntimeError("local_dev_auth_forbidden_in_production")
         checked_id(settings.api_local_principal)
     else:
-        token_map()
+        has_static = bool(_static_token_map())
+        has_dynamic = bool(get_auth_store().token_map())
+        if not (
+            has_static
+            or has_dynamic
+            or settings.auth_registration_enabled
+            or settings.auth_guest_enabled
+        ):
+            raise RuntimeError("api_auth_configuration_invalid")
         if settings.enable_local_audio_playback:
             raise RuntimeError("multiuser_http_requires_client_audio_playback")
     if production and cloud_settings.execution_state_mode != "redis":
@@ -83,14 +102,18 @@ def authenticate(request: Request) -> Principal:
     if settings.api_auth_mode == "local-dev":
         return Principal(settings.api_local_principal, "local-dev")
     authorization = request.headers.getlist("authorization")
-    if len(authorization) != 1:
-        raise HTTPException(401, detail={"code": "authentication_required"},
-                            headers={"WWW-Authenticate": "Bearer"})
-    pieces = authorization[0].split(" ")
-    if len(pieces) != 2 or pieces[0].lower() != "bearer" or not _TOKEN.fullmatch(pieces[1]):
+    token_value = ""
+    if len(authorization) == 1:
+        pieces = authorization[0].split(" ")
+        if len(pieces) == 2 and pieces[0].lower() == "bearer":
+            token_value = pieces[1]
+    elif not authorization and request.url.path.startswith("/audio/"):
+        # 手机端播放器无法自定义请求头，仅音频资源允许 query 传令牌。
+        token_value = request.query_params.get("access_token", "")
+    if not token_value or not _TOKEN.fullmatch(token_value):
         raise HTTPException(401, detail={"code": "invalid_credentials"},
                             headers={"WWW-Authenticate": "Bearer"})
-    digest = hashlib.sha256(pieces[1].encode("ascii")).hexdigest()
+    digest = hashlib.sha256(token_value.encode("ascii")).hexdigest()
     for expected, user_id in token_map().items():
         if hmac.compare_digest(digest, expected):
             return Principal(user_id, "bearer")

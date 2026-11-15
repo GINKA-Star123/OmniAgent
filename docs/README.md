@@ -11,7 +11,9 @@
 | 请求追踪、阶段耗时与错误 | [API 可观测性](api-observability.md) |
 | Redis 执行状态与部署门禁 | [执行状态与门禁](operations/v1.2-execution-state-and-gates.md) |
 | 仓库治理与检查工具 | [仓库约定](repo-governance.md) |
+| 移动端三终端联调（后端 + Cloudflare + 出码） | [三终端启动手册](mobile-3-terminal-startup.md) |
 | 开始质量评测 | [评测导航](quality/README.md)，再按[总流程](quality/project-evaluation-workflow.md)执行 |
+| 乐正绫人设、自然对白与演绎回归 | [人设与对白演绎](quality/yzl-persona-performance.md) |
 
 ## V1.2 规划与批次
 

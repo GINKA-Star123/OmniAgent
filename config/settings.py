@@ -38,6 +38,20 @@ class Settings(BaseSettings):
         default="{}", alias="API_AUTH_TOKEN_SHA256_MAP", repr=False, exclude=True,
     )
 
+    # 移动端动态账号：注册/登录/游客签发的 token 与静态 API_AUTH_TOKEN_SHA256_MAP 合并生效。
+    auth_store_path: str = Field(
+        default="data/auth/auth_store.json", alias="AUTH_STORE_PATH",
+    )
+    auth_token_ttl_hours: int = Field(default=720, alias="AUTH_TOKEN_TTL_HOURS")
+    auth_guest_token_ttl_hours: int = Field(
+        default=168, alias="AUTH_GUEST_TOKEN_TTL_HOURS",
+    )
+    auth_registration_enabled: bool = Field(
+        default=False, alias="AUTH_REGISTRATION_ENABLED",
+    )
+    auth_guest_enabled: bool = Field(default=False, alias="AUTH_GUEST_ENABLED")
+    auth_invite_code: str = Field(default="", alias="AUTH_INVITE_CODE")
+
     llm_provider: str = LLM_PROVIDER
     llm_model: str = LLM_MODEL
     enable_mock_llm: bool = ENABLE_MOCK_LLM
